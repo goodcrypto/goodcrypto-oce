@@ -1,0 +1,92 @@
+/**
+ *  Key interface for the Open Crypto Engine.
+ *
+ *  WARNING: This IDL file is not yet used. There is a hand coded 
+ *  com.goodcrypto.crypto.keys.PluginInterface.java instead.
+ *
+ *  Copyright 2003-2004 GoodCrypto
+ *  Last modified: 2004.09.01
+ */
+
+/** 
+ *  Import the Data and Strings sequences, and the CryptoPluginException.
+ */
+#include <OpenCryptoEngine.idl>
+
+module com {
+
+    module goodcrypto {
+
+        module crypto {
+                    
+            module key {
+                    
+                module corba {
+    
+                    /**
+                     *  Interface version.
+                     *  Any released change in the interface requires a new version number.
+                     */
+                    const string InterfaceVersion = "0.1";
+    
+                    /**
+                     *  Pluggable crypto key management interface for the Open Crypto Engine.
+                     *  Copyright 2003 GoodCrypto
+                     *
+                     *  See the CryptoPlugin interface.
+                     */
+                    interface CryptoKeyPlugin {
+    
+                        /**
+                         *  Get the plugin's name.
+                         *  @exception CryptoPluginException
+                         *  @return Name of the plugin
+                         */
+                        string getName () raises ( CryptoPluginException );
+    
+                        /**
+                         *  Get the version of this plugin's implementation, i.e. the CORBA servant's version.
+                         *  @exception CryptoPluginException
+                         *  @return Plugin version
+                         */
+                        string getPluginVersion () raises ( CryptoPluginException );
+    
+                        /**
+                         *  Get the version of the underlying crypto.
+                         *
+                         *  @exception CryptoPluginException
+                         *  @return Crypto version
+                         */
+                        string getCryptoVersion () raises ( CryptoPluginException );
+    
+                        /**
+                         *          Create a new public key pair.
+                         *
+                         *  The new key is added to the keyring.
+                         *
+                         *  @exception CryptoPluginException
+                         *  @param userID ID for the new key. This is typically your own email address.
+                         *  @param passphrase Passphrase
+                         */
+                        void create (
+                            in string userID,
+                            in string passphrase
+                        ) raises ( CryptoPluginException );
+    
+                        /**
+                         *          Import a public key to the keyring.
+                         *
+                         *  @exception CryptoPluginException
+                         *  @param publicKey ID for the new key. This is typically your own email address.
+                         *  @param passphrase Passphrase
+                         */
+                        void create (
+                            in Data key
+                        ) raises ( CryptoPluginException );
+    
+                    };
+                };
+            };
+        };
+    };
+};

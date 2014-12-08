@@ -1,0 +1,214 @@
+/**
+ *  OpenCryptoEngine.idl
+ *
+ *  The Open Crypto Engine is a platform and language independent crypto api.
+ *
+ *  Copyright 2002-2004 GoodCrypto
+ *  Last modified: 2004.09.20
+ */
+module com {
+
+    module goodcrypto {
+
+        module crypto {
+                
+            module corba {
+
+                /**
+                 *  Interface version.
+                 *  Any released change in the interface requires a new version number.
+                 */
+                const string InterfaceVersion = "0.1";
+
+                /**
+                 *  Byte sequence.
+                 */
+                typedef sequence<octet> Data;
+
+                /**
+                 *  String sequence.
+                 */
+                typedef sequence<string> Strings;
+    
+                /**
+                 *  Exception from the plugin interface.
+                 */
+                exception CryptoPluginException {
+                    /**
+                     * Message to include in the exception.
+                     */
+                    string message;
+                };
+
+                /**
+                 *  Pluggable crypto interface for the Open Crypto Engine
+                 *  Copyright 2002-2005 GoodCrypto
+                 *
+                 *  To avoid race conditions operations are atomic.
+                 *
+                 *  We would prefer to set the passphrase once because
+                 *  different plugins need it at different times, and
+                 *  because sending it more often than needed would be
+                 *  a security risk. But since there is generally
+                 *  only one active instance of each OCE service, then
+                 *  one process' encrypt() could end up using another
+                 *  process' passphrase.
+                 */
+                interface CryptoService {
+
+                    /**
+                     *  Get the plugin's name.
+                     *  @exception CryptoPluginException
+                     *  @return Name of the plugin
+                     */
+                    string getName () raises ( CryptoPluginException );
+
+                    /**
+                     *  Get the version of this plugin's implementation, 
+                     *  i.e. the CORBA servant's version.
+                     *  @exception CryptoPluginException
+                     *  @return Plugin version
+                     */
+                    string getPluginVersion () raises ( CryptoPluginException );
+
+                    /**
+                     *  Get the version of the underlying crypto service provider.
+                     *
+                     *  @exception CryptoPluginException
+                     *  @return Crypto version
+                     */
+                    string getCryptoVersion () raises ( CryptoPluginException );
+
+                    /**
+                     * Determine if the crypto app is available for use.
+                     * <p>
+                     * If would be better if this method were static,
+                     * but we can't specify "static" in an idl file.
+                     * Since some plugins are based on libraries which are
+                     * dynamically loaded in the constructor, it's essential to
+                     * enclose a plugin's constructor in try/catch.
+                     *
+                     * @return                      true if backend app is available for use.
+                     */
+                    boolean isAvailable();
+    
+                    /**
+                     *          Sign data with the secret key indicated by fromUserID, then encrypt with
+                     *          the public key indicated by toUserID.
+                     *
+                     *          To avoid a security bug in OpenPGP we must sign before encrypting.
+                     *
+                     *  @exception CryptoPluginException
+                     *  @param data Data to encrypt
+                     *  @param fromUserID ID indicating which secret key to use. This is typically your own email address.
+                     *  @param toUserID ID indicating which public key to use. This is typically an email address.
+                     *  @param passphrase Passphrase
+                     *  @return Encrypted data
+                     */
+                    Data signAndEncrypt (
+                        in Data data,
+                        in string fromUserID,
+                        in string toUserID,
+                        in string passphrase
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Sign data with the secret key indicated by fromUserID, then encrypt with
+                     *          the public key indicated by toUserID, then ASCII armor.
+                     *
+                     *          To avoid a security bug in OpenPGP we must sign before encrypting.
+                     *
+                     *  @exception CryptoPluginException
+                     *  @param data Data to encrypt
+                     *  @param fromUserID ID indicating which secret key to use. This is typically your own email address.
+                     *  @param toUserID ID indicating which public key to use. This is typically an email address.
+                     *  @param passphrase Passphrase
+                     *  @return Encrypted data
+                     */
+                    Data signEncryptAndArmor (
+                        in Data data,
+                        in string fromUserID,
+                        in string toUserID,
+                        in string passphrase
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Encrypt data with the public key indicated by toUserID.
+                     *
+                     *  @exception CryptoPluginException
+                     *  @param data Data to encrypt
+                     *  @param toUserID ID indicating which public key to use. This is typically an email address.
+                     *  @param passphrase Passphrase
+                     *  @return Encrypted data
+                     */
+                    Data encryptOnly (
+                        in Data data,
+                        in string toUserID
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Decrypt data.
+                     *  @exception CryptoPluginException
+                     *  @param data Data to decrypt
+                     *  @param passphrase Passphrase
+                     *  @return Decrypted data
+                     */
+                    Data decrypt (
+                        in Data data,
+                        in string passphrase
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Sign data with the private key indicated by userID.
+                     *  @exception CryptoPluginException
+                     *  @param data Data to sign
+                     *  @param userID ID indicating which private key to use. This is typically an email address.
+                     *  @param passphrase Passphrase
+                     *  @return Signed data
+                     */
+                    Data sign (
+                        in Data data,
+                        in string userID,
+                        in string passphrase
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Verify data was signed by userID.
+                     *  @exception CryptoPluginException
+                     *  @param  data Data to verify
+                     *  @param  userID ID indicating which public key to use.
+                     *          This is typically an email address.
+                     *  @return Whether data was signed by userID
+                     */
+                    boolean verify (
+                        in Data data,
+                        in string userID
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Get signer of data.
+                     *  @exception CryptoPluginException
+                     *  @param  data Signed data
+                     *  @return ID of the apparent signer, or null if none.
+                     */
+                    string getSigner (
+                        in Data data
+                    ) raises ( CryptoPluginException );
+
+                    /**
+                     *          Get list of user IDs.
+                     *
+                     *  Some crypto engines require an exact match to an existing user ID, no matter
+                     *  what their docs say.
+                     *
+                     *  @exception CryptoPluginException
+                     *  @return List of user IDs
+                     */
+                    Strings getUserIDs (
+                    ) raises ( CryptoPluginException );
+
+                };
+            };
+        };
+    };
+};
