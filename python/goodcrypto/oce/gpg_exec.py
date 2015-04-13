@@ -3,15 +3,18 @@
     Single module where gpg is invoked. 
     
     GPG should never be directly invoked from anywhere else.
+    This module is on the worker/server end of an rq fifo queue.
+    Other code should enqueue all gpg calls to the client end of that queue.  
 
     Copyright 2014 GoodCrypto
-    Last modified: 2014-10-25
+    Last modified: 2014-12-07
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import os, sh
 from base64 import b64decode, b64encode
 from random import uniform
+from rq.timeouts import JobTimeoutException
 from tempfile import gettempdir
 from time import sleep
 from traceback import format_exc
@@ -27,7 +30,7 @@ from syr.cli import minimal_env
 from syr.lock import locked
 
 
-def execute_gpg_command(home_dir, timeout, initial_args, passphrase=None, data=None):
+def execute_gpg_command(home_dir, time_out, initial_args, passphrase=None, data=None):
     '''
         Issue a GPG command in its own worker so there are no concurrency challenges.
     '''
@@ -35,7 +38,7 @@ def execute_gpg_command(home_dir, timeout, initial_args, passphrase=None, data=N
     log = LogFile(filename='goodcrypto.oce.gpg_exec_queue.log')
     gpg_exec = None
     try:
-        gpg_exec = GPGExec(home_dir, timeout)
+        gpg_exec = GPGExec(home_dir, time_out)
         log.write_and_flush('gpg exec: {}'.format(gpg_exec))
         gpg_exec.wait_for_other_gpg_jobs()
         
@@ -56,6 +59,11 @@ def execute_gpg_command(home_dir, timeout, initial_args, passphrase=None, data=N
             gpg_output = b64encode(gpg_output)
         if gpg_error is not None: 
             gpg_error = b64encode(gpg_error)
+    except JobTimeoutException as job_exception:
+        log.write_and_flush('gpg exec {}'.format(str(job_exception)))
+        result_code = gpg_constants.TIMED_OUT_RESULT
+        gpg_error = b64encode(str(job_exception))
+        gpg_output = None
     except Exception as exception:
         result_code = gpg_constants.ERROR_RESULT
         gpg_output = None
@@ -82,10 +90,10 @@ class GPGExec(object):
              2 = stderr
     '''
 
-    DEBUGGING = False
+    DEBUGGING = True
     CONF_FILENAME = 'gpg.conf'
     
-    def __init__(self, home_dir, timeout):
+    def __init__(self, home_dir, time_out):
         '''
             Create a new GPGExec object.  
             
@@ -97,7 +105,7 @@ class GPGExec(object):
         self.log = LogFile()
 
         self.gpg_home = home_dir
-        self.timeout = timeout * 1000 # in ms
+        self.time_out = time_out * 1000 # in ms
         
         self.result_code = gpg_constants.ERROR_RESULT
         self.gpg_output = None
@@ -138,7 +146,7 @@ class GPGExec(object):
             if gpg_constants.GEN_KEY in initial_args and data is not None:
                 ready_to_run, email_semaphore = self.prep_to_gen_key(data)
                 if ready_to_run:
-                    self.log_message('ready to gen key with args: {}'.format(initial_args))
+                    self.log_message('ready to gen key')
                     self.prep_and_run(initial_args, passphrase, data)
                 else:
                     self.result_code = True
@@ -149,7 +157,7 @@ class GPGExec(object):
                 fingerprint = self.prep_to_delete_key(initial_args)
                 if fingerprint is not None:
                     new_args = [gpg_constants.DELETE_KEYS, fingerprint]
-                    self.log_message('ready to delete key with args: {}'.format(new_args))
+                    self.log_message('ready to delete key: {}'.format(fingerprint))
                     self.prep_and_run(new_args)
 
             else:
@@ -222,6 +230,12 @@ class GPGExec(object):
             self.log_message("gpg error: {}".format(self.gpg_error))
             self.log_message("exception: \n{}".format(format_exc()))
             
+        except JobTimeoutException as job_exception:
+            self.log_message('gpgexec {}'.format(str(job_exception)))
+            self.result_code = gpg_constants.TIMED_OUT_RESULT
+            self.gpg_error = b64encode(str(job_exception))
+            self.gpg_output = None
+
     def run_gpg(self, args, stdin):
         ''' Run the GPG command.
             
@@ -231,25 +245,26 @@ class GPGExec(object):
         '''
 
         try:
-            self.log_message('--- started executing: {} ---'.format(args[0]))
-            self.log.write_and_flush('home dir: {}'.format(self.gpg_home))
-            self.log.write_and_flush('timeout: {}'.format(self.timeout))
+            command = args[0]
+            self.log_message('--- started executing: {} ---'.format(command))
+            self.log_message('{} home dir: {}'.format(command, self.gpg_home))
+            self.log_message('{} time_out: {} ms'.format(command, self.time_out))
 
             if stdin and len(stdin) > 0:
-                gpg_process = self.gpg(*args, _in=stdin, _timeout=self.timeout, _ok_code=[0,2])
+                gpg_process = self.gpg(*args, _in=stdin, _timeout=self.time_out, _ok_code=[0,2])
             else:
-                gpg_process = self.gpg(*args, _timeout=self.timeout, _ok_code=[0,2])
+                gpg_process = self.gpg(*args, _timeout=self.time_out, _ok_code=[0,2])
     
             gpg_results = gpg_process.wait()
-    
-            self.log_message('--- finished executing: {} ---'.format(args[0]))
+
+            self.log_message('{} exit code: {}'.format(command, gpg_results.exit_code))
+            self.log_message('--- finished executing: {} ---'.format(command))
             
             self.result_code = gpg_results.exit_code
             self.gpg_output = gpg_results.stdout
             self.gpg_error = gpg_results.stderr
             
             if GPGExec.DEBUGGING:
-                self.log_message('gpg results: {}'.format(self.result_code))
                 if self.gpg_output and type(self.gpg_output) == str:
                     self.log_message(self.gpg_output)
                 if self.gpg_error and type(self.gpg_output) == str:
@@ -586,7 +601,7 @@ class GPGExec(object):
             >>> from syr.user import whoami
             >>> gpg_exec = GPGExec('/var/local/projects/goodcrypto/server/data/oce/.gnupg', 1)
             >>> gpg_exec.log_message('test message')
-            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.gpg_exec.x.log'))
+            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.gpg_exec.log'))
             True
         '''
 

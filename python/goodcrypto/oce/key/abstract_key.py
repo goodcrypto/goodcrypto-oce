@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-10-24
+    Last modified: 2014-12-02
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -84,7 +84,7 @@ class AbstractKey(object):
 
 
     @abstractmethod
-    def import_public(self, data, temporary=False):
+    def import_public(self, data, temporary=False, id_fingerprint_pairs=None):
         '''
             Add a public key to the keyring.
 
@@ -147,12 +147,21 @@ class AbstractKey(object):
 
 
     @abstractmethod
-    def get_fingerprint(self, user_id, temp_keyring_args=None):
+    def get_fingerprint(self, user_id):
         '''
             Returns a key's fingerprint and the expiration date.
 
             @param  user_id                                       ID for the key. This is typically an email address.
-            @return                                              Fingerprint
+            @return                                              Fingerprint and expiration
+        '''
+
+    @abstractmethod
+    def get_id_fingerprint_pairs(self, key_block):
+        '''
+            Returns a key's user id, fingerprint and the expiration date.
+
+            @param  user_id                                       Key block.
+            @return                                              Fingerprint, user id, and expiration
         '''
 
     @abstractmethod

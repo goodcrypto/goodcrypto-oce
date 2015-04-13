@@ -10,6 +10,11 @@ OCE is intended primarily for OpenPGP email and file encryption. It uses some li
 There are 2 implementations of OCE: one in python and the other in java. The python branch is being actively maintained.
 
 
+##Repository
+
+This repository acts as a backup for the source code. We strongly encourage users to <a href="https://goodcrypto.com/server/download/">download the ISO</a> which includes full source code and is preconfigured.
+
+
 ##Dependencies
 
 The python implementation requires the goodcrypto-libs repository.

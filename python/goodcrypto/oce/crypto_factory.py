@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-09-19
+    Last modified: 2014-11-17
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -366,7 +366,7 @@ class CryptoFactory(object):
             >>> from syr.user import whoami
             >>> CryptoFactory._log = None
             >>> CryptoFactory.log_message('Test message')
-            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.crypto_factory.x.log'))
+            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.crypto_factory.log'))
             True
         '''
         
@@ -387,7 +387,7 @@ class CryptoFactory(object):
             >>> CryptoFactory.DEBUGGING = True
             >>> CryptoFactory._log = None
             >>> CryptoFactory.debug_message('Debug message')
-            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.crypto_factory.x.log'))
+            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.crypto_factory.log'))
             True
             >>> CryptoFactory.DEBUGGING = debug
         '''

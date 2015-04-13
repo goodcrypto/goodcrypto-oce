@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-09-19
+    Last modified: 2014-11-19
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -33,7 +33,7 @@ class OpenPGPAnalyzer(object):
         '''
 
         super(OpenPGPAnalyzer, self).__init__()
-        self.log = LogFile()
+        self.log = None
 
 
     def is_encrypted(self, data, passphrase=None, crypto=None):
@@ -58,9 +58,9 @@ class OpenPGPAnalyzer(object):
             packets = crypto.list_packets(data, passphrase=passphrase)
             encrypted = packets is not None and len(packets) > 0
         except CryptoException as crypto_exception:
-            self.log.write(crypto_exception.value)
+            self.log_message(crypto_exception.value)
             
-        self.log.write('data encrypted: {}'.format(encrypted))
+        self.log_message('data encrypted: {}'.format(encrypted))
 
         return encrypted
 
@@ -84,9 +84,26 @@ class OpenPGPAnalyzer(object):
             signer = crypto.get_signer(data)
             signed = signer is not None and len(signer) > 0
         except CryptoException as crypto_exception:
-            self.log.write(crypto_exception.value)
+            self.log_message(crypto_exception.value)
             
-        self.log.write('data signed: {}'.format(signed))
+        self.log_message('data signed: {}'.format(signed))
 
         return signed
+
+    def log_message(self, message):
+        '''
+            Log the message to the local log.
+            
+            >>> import os.path
+            >>> from syr.log import BASE_LOG_DIR
+            >>> from syr.user import whoami
+            >>> OpenPGPAnalyzer().log_message('test')
+            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.open_pgp_analyzer.log'))
+            True
+        '''
+
+        if self.log is None:
+            self.log = LogFile()
+
+        self.log.write_and_flush(message)
 
