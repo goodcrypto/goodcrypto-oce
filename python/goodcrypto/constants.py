@@ -2,14 +2,14 @@
     Constants for GoodCrypto app.
 
     Copyright 2014 Good Crypto
-    Last modified: 2014-12-17
+    Last modified: 2015-01-06
 '''
 
 import os, os.path
 
 # set this to False to ship, True to test
 # consider changing this to something easier to understand 
-WARNING_WARNING_WARNING_TESTING_ONLY_DO_NOT_SHIP = True
+WARNING_WARNING_WARNING_TESTING_ONLY_DO_NOT_SHIP = False
 if WARNING_WARNING_WARNING_TESTING_ONLY_DO_NOT_SHIP:
     WARNING = 'WARNING! WARNING! WARNING! TESTING ONLY! DO NOT SHIP!'
     

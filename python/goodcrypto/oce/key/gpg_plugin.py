@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-12-07
+    Last modified: 2015-01-01
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -128,7 +128,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin.create(email, 'another code', wait_for_results=True)
             (True, False)
             >>> encrypted_data = plugin.encrypt_only('Test data', email)
-            >>> unencrypted_data, result_code = plugin.decrypt(encrypted_data, 'another code')
+            >>> unencrypted_data, signed_by, result_code = plugin.decrypt(encrypted_data, 'another code')
             >>> result_code == gpg_constants.ERROR_RESULT
             True
             >>> plugin.delete(email)
@@ -200,7 +200,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
-            >>> ok, _ = plugin.create('caspar@goodcrypto.local', 'test passphrase', wait_for_results=True)
+            >>> ok, __ = plugin.create('caspar@goodcrypto.local', 'test passphrase', wait_for_results=True)
             >>> ok
             True
             >>> plugin.delete('caspar@goodcrypto.local')
@@ -219,7 +219,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 result_ok = False
                 self.log_message('no need to delete key for blank user id')
             else:
-                _, address = parse_address(user_id)
+                __, address = parse_address(user_id)
                 self.log_message('deleting: {}'.format(address))
                 tries = 0
                 done = False
@@ -259,7 +259,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
-            >>> ok, _ = plugin.create('griffin@goodcrypto.local', 'test passphrase', wait_for_results=True)
+            >>> ok, __ = plugin.create('griffin@goodcrypto.local', 'test passphrase', wait_for_results=True)
             >>> ok
             True
             >>> plugin.delete_private_key_only('unknown@goodcrypto.local')
@@ -304,7 +304,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Export a public key from the keyring.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> filename = '/var/local/projects/goodcrypto/server/tests/oce/pubkeys/joseph@goodcrypto.remote.gpg.pub'
+            >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/joseph@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
             ...    plugin = KeyFactory.get_crypto(NAME)
@@ -357,7 +357,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             This method deletes any existing matching keys.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> filename = '/var/local/projects/goodcrypto/server/tests/oce/pubkeys/laura@goodcrypto.remote.gpg.pub'
+            >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/laura@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
             ...    plugin = KeyFactory.get_crypto(NAME)
@@ -425,7 +425,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             The temporary keyring is destroyed at the end of this function.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> filename = '/var/local/projects/goodcrypto/server/tests/oce/pubkeys/laura@goodcrypto.remote.gpg.pub'
+            >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/laura@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
             ...    plugin = KeyFactory.get_crypto(NAME)
@@ -473,7 +473,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> plugin = KeyFactory.get_crypto(NAME)
-            >>> dirname = '/var/local/projects/goodcrypto/server/tests/oce/pubkeys'
+            >>> dirname = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys'
             >>> filename = '{}/laura@goodcrypto.remote.gpg.pub'.format(dirname)
             >>> with open(filename) as f:
             ...    data = f.read()
@@ -487,7 +487,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             user_ids = []
             id_fingerprint_pairs = self.get_id_fingerprint_pairs(data)
             if id_fingerprint_pairs is not None:
-                for (user_id, _) in id_fingerprint_pairs:
+                for (user_id, __) in id_fingerprint_pairs:
                     user_ids.append(user_id)
             self.log_message('extracted user ids: {}'.format(user_ids))
         except Exception:
@@ -508,7 +508,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
-            >>> ok, _ = plugin.create('colin@goodcrypto.local', 'test passphrase', wait_for_results=True)
+            >>> ok, __ = plugin.create('colin@goodcrypto.local', 'test passphrase', wait_for_results=True)
             >>> ok
             True
             >>> plugin.is_valid('colin@goodcrypto.local')
@@ -538,7 +538,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
-            >>> ok, _ = plugin.create('erinn@goodcrypto.local', 'test passphrase', wait_for_results=True)
+            >>> ok, __ = plugin.create('erinn@goodcrypto.local', 'test passphrase', wait_for_results=True)
             >>> ok
             True
             >>> plugin.is_passcode_valid('Erinn@goodcrypto.local', 'test passphrase')
@@ -609,7 +609,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 if private_user_ids is None:
                     self.log_message('no private keys found')
                 else:
-                    _, address = parse_address(user_id)
+                    __, address = parse_address(user_id)
                     for private_user_id in private_user_ids:
                         if private_user_id.lower() == address.lower():
                             key_exists = True
@@ -654,7 +654,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 if public_user_ids is None:
                     self.log_message('no public keys found')
                 else:
-                    _, address = parse_address(user_id)
+                    __, address = parse_address(user_id)
                     for public_user_id in public_user_ids:
                         if public_user_id.lower() == address.lower():
                             key_exists = True
@@ -679,7 +679,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
-            >>> ok, _ = plugin.create('Karsten <karsten@goodcrypto.local>', 'passcode', wait_for_results=True)
+            >>> ok, __ = plugin.create('Karsten <karsten@goodcrypto.local>', 'passcode', wait_for_results=True)
             >>> ok
             True
             >>> fingerprint, expired = plugin.get_fingerprint('karsten@goodcrypto.local')
@@ -705,7 +705,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
         fingerprint = expiration_date = None
         try:
-            (_, email) = parse_address(user_id)
+            (__, email) = parse_address(user_id)
             self.log_message('getting fingerprint for {}'.format(email))
             
             # add angle brackets around the email address so we don't
@@ -738,7 +738,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> from goodcrypto.oce import constants as oce_constants
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> filename = '/var/local/projects/goodcrypto/server/tests/oce/pubkeys/joseph@goodcrypto.remote.gpg.pub'
+            >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/joseph@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
             ...    plugin = KeyFactory.get_crypto(NAME)

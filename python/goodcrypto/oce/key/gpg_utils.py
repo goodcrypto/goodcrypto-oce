@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-11-26
+    Last modified: 2014-12-31
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -68,7 +68,7 @@ def parse_id_fingerprint_pairs(output):
                 for part in parts[3:]:
                     full_address += part
                 if full_address:
-                    _, email = parse_address(full_address)
+                    __, email = parse_address(full_address)
                     _log.write('pub email: {}'.format(email))
             elif line.find(gpg_constants.FINGERPRINT_PREFIX) >= 0:
                 # if an email address has been defined, then save the associated fingerprint
@@ -83,7 +83,7 @@ def parse_id_fingerprint_pairs(output):
                 # get the alternative email address
                 m = re.match('^uid\s+(.*)'.format(gpg_constants.UID_PREFIX), line.strip())
                 if m:
-                    _, email = parse_address(m.group(1))
+                    __, email = parse_address(m.group(1))
                     # save the email address with the associated fingerprint
                     if email and fingerprint:
                         email = add_pair_and_reset(email, fingerprint)

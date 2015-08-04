@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-12-07
+    Last modified: 2015-01-01
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -356,7 +356,7 @@ class GPGPlugin(AbstractPlugin):
                     #ssb::1024:16:0E298674A69943BF:2013-10-14:::::::
                     elements = raw_line.split(':')
                     if elements and len(elements) > 9:
-                        _, address = parse_address(elements[9])
+                        __, address = parse_address(elements[9])
                         user_ids.append(address)
         except TypeError as type_error:
             self.handle_unexpected_exception(type_error)
@@ -425,18 +425,24 @@ class GPGPlugin(AbstractPlugin):
 
     def decrypt(self, data, passphrase):
         '''
-            Decrypt data.
+            Decrypt data and return the signer, if there is one.
 
             Test a few cases known to fail. See the unittests for more robust examples.
             >>> plugin = GPGPlugin()
-            >>> decrypted_data, result_code = plugin.decrypt('This is a test', 'a secret passphrase')
+            >>> decrypted_data, signed_by, result_code = plugin.decrypt(
+            ...    'This is a test', 'a secret passphrase')
             >>> decrypted_data is None
             True
         '''
 
+        GOOD_SIG = 'Good signature from'
         UNKNOWN_SIG = "gpg: Can't check signature: public key not found"
+        DECRYPT_FAILED = 'decryption failed:'
+        DECRYPT_MESSAGE_FAILED = 'decrypt_message failed'
+        INVALID_PACKET = 'invalid packet'
+        NO_VALID_DATA = 'no valid OpenPGP data found'
 
-        decrypted_data = None
+        decrypted_data = signed_by = None
         result_code = gpg_constants.ERROR_RESULT
         try:
             if self.DEBUGGING:
@@ -451,16 +457,28 @@ class GPGPlugin(AbstractPlugin):
 
                 if result_code == gpg_constants.GOOD_RESULT:
                     decrypted_data = gpg_output
+                    if gpg_error is not None and GOOD_SIG in gpg_error:
+                        signature = gpg_error[gpg_error.find(GOOD_SIG) + len(GOOD_SIG):]
+                        signature = signature.split('\n')[0].strip()
+                        signed_by = signature.strip('"')
+                        self.log_message("decrypted data, with good signature from {}".format(signed_by))
                     
                 elif result_code == gpg_constants.CONDITIONAL_RESULT: 
                     
                     # if an error reported, but it was just a unknown sig, accept the decryption
-                    if gpg_error is not None and UNKNOWN_SIG in gpg_error:
-                        decrypted_data = gpg_output
-                        self.log_message("decrypted data, but signature not verified")
-                    else:
-                        result_code = gpg_constants.ERROR_RESULT
+                    if gpg_error is not None:
                         self.log_message("gpg error: {}".format(gpg_error))
+                        if (NO_VALID_DATA in gpg_error or 
+                            DECRYPT_FAILED in gpg_error or 
+                            DECRYPT_MESSAGE_FAILED is gpg_error or
+                            INVALID_PACKET in gpg_error):
+                            result_code = gpg_constants.ERROR_RESULT
+                        else:
+                            decrypted_data = gpg_output
+                            if UNKNOWN_SIG in gpg_error:
+                                self.log_message("decrypted data, with unknown signature")
+                            else:
+                                decrypted_data = gpg_output
                 else:
                     self.log_message("gpg_error: {}".format(gpg_error))
 
@@ -469,7 +487,7 @@ class GPGPlugin(AbstractPlugin):
 
         self.log_message("decrypted data: {} / result code: {}".format(decrypted_data is not None, result_code))
         
-        return decrypted_data, result_code
+        return decrypted_data, signed_by, result_code
 
     def encrypt_only(self, data, to_user_id, charset=None):
         '''
@@ -667,7 +685,7 @@ class GPGPlugin(AbstractPlugin):
             >>> email = 'karen@goodcrypto.remote'
             >>> passcode = 'secret'
             >>> plugin = KeyFactory.get_crypto(gpg_constants.ENCRYPTION_NAME)
-            >>> ok, _ = plugin.create(email, passcode, wait_for_results=True)
+            >>> ok, __ = plugin.create(email, passcode, wait_for_results=True)
             >>> ok
             True
             >>> signed_data = plugin.sign(oce_constants.TEST_DATA_STRING, email, passcode)
@@ -685,8 +703,8 @@ class GPGPlugin(AbstractPlugin):
             self.log_message("no signer found")
         else:
             self.log_message('signed by "{}"'.format(signer))
-            _, user_email = parse_address(by_user_id)
-            _, signer_email = parse_address(signer)
+            __, user_email = parse_address(by_user_id)
+            __, signer_email = parse_address(signer)
             verified = signer_email == user_email
             if not verified:
                 self.log_message('could not verify because signed by "{}" not "{}"'.format(
@@ -703,7 +721,7 @@ class GPGPlugin(AbstractPlugin):
             user = user_id
         else:
             try:
-                _, user = parse_address(user_id)                
+                __, user = parse_address(user_id)                
             except Exception:
                 self.log_message(format_exc())
                 user = user_id
@@ -726,7 +744,7 @@ class GPGPlugin(AbstractPlugin):
 
         packets = None
         try:
-            if data is None or len(data.strip()) <= 0:
+            if data is None or (isinstance(data, str) and len(data.strip()) <= 0):
                 self.log_message('no data so no packets')
             else:
                 args = [gpg_constants.LIST_PACKETS]

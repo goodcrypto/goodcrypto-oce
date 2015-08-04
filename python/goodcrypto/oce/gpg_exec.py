@@ -7,12 +7,13 @@
     Other code should enqueue all gpg calls to the client end of that queue.  
 
     Copyright 2014 GoodCrypto
-    Last modified: 2014-12-07
+    Last modified: 2014-12-24
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import os, sh
 from base64 import b64decode, b64encode
+from cStringIO import StringIO
 from random import uniform
 from rq.timeouts import JobTimeoutException
 from tempfile import gettempdir
@@ -50,7 +51,7 @@ def execute_gpg_command(home_dir, time_out, initial_args, passphrase=None, data=
         if passphrase is not None:
             passphrase = b64decode(passphrase)
         if data is not None:
-            data = b64decode(data)
+            data = bytearray(b64decode(data))
 
         result_code, gpg_output, gpg_error = gpg_exec.execute(initial_args, passphrase, data)
         
@@ -122,10 +123,9 @@ class GPGExec(object):
         # --batch: We're always in batch mode.
         # --lock-once: Lock the databases the first time a lock is requested and do not release the lock until the process terminates. 
         # --always-trust: We don't have any trust infrastructure yet.
-        # --utf8-strings: Assume all arguments are in UTF-8 format.
-        # --no-secmem-warning: Gpg (used to?) complains about mem unless we're root, and we shouldn't be running as root.
+        ## --utf8-strings: Assume all arguments are in UTF-8 format.
         # redirect stdout and stderr so we can exam the results as needed
-        self.gpg = sh.gpg.bake(_bg=True, no_tty=True, verbose=True, homedir=self.gpg_home,
+        self.gpg = sh.gpg.bake(no_tty=True, verbose=True, homedir=self.gpg_home,
            no_options=True, ignore_time_conflict=True, ignore_valid_from=True, batch=True, 
            always_trust=True, lock_once=True, _env=minimal_env())
 
@@ -163,12 +163,6 @@ class GPGExec(object):
             else:
                 self.prep_and_run(initial_args, passphrase, data)
             
-            if GPGExec.DEBUGGING:
-                if self.gpg_output is not None:
-                    self.log_message('gpg_output: {}'.format(self.gpg_output))
-                if self.gpg_error is not None:
-                    self.log_message('gpg_error: {}'.format(self.gpg_error))
-
         finally:
             # remove the temporary file if we created it
             if ready_to_run and email_semaphore is not None and os.path.exists(email_semaphore):
@@ -189,24 +183,31 @@ class GPGExec(object):
         
         result_ok = False
         try:
-            stdin = []
+            stdin_file = StringIO()
             args = initial_args
+            self.log_message("prep and running: {}".format(args))
 
             if passphrase and len(passphrase) > 0:
                 if LOG_PASSPHRASES:
-                    self.log_message('DEBUG ONLY! passphrase: "{}"'.format(passphrase))
+                    self.log_message('DEBUG ONLY! passphrase:\n{}'.format(passphrase))
                 else:
                     self.log_message('passphrase supplied')
 
                 # passphrase will be passed on stdin, file descriptor 0 is stdin
                 passphraseOptions = ['--passphrase-fd', '0']
                 args.append(passphraseOptions)
-                stdin.append('{}{}'.format(passphrase, gpg_constants.EOL))
+                stdin_file.write(passphrase)
+                stdin_file.write(gpg_constants.EOL)
 
+            if data:
+                stdin_file.write(buffer(data))
+                
+                if GPGExec.DEBUGGING:
+                    self.log_message("data: {}".format(data))
 
-            if data and len(data) > 0:
-                stdin.append('{}{}'.format(data, gpg_constants.EOL))
-
+            stdin = stdin_file.getvalue()
+            stdin_file.close()
+            
             if GPGExec.DEBUGGING:
                 if LOG_PASSPHRASES and stdin:
                     self.log_message("gpg args: {} stdin: {}".format(args, stdin))
@@ -217,12 +218,8 @@ class GPGExec(object):
             
             result_ok = self.run_gpg(args, stdin)
             self.log_message("gpg command result_ok: {}".format(result_ok))
-            if GPGExec.DEBUGGING:
-                self.log_message("gpg output: {}".format(self.gpg_output))
-                self.log_message("gpg error: {}".format(self.gpg_error))
 
         except Exception as exception:
-            result_ok = False
             self.result_code = gpg_constants.ERROR_RESULT
             self.gpg_error = str(exception)
                 
@@ -247,7 +244,7 @@ class GPGExec(object):
         try:
             command = args[0]
             self.log_message('--- started executing: {} ---'.format(command))
-            self.log_message('{} home dir: {}'.format(command, self.gpg_home))
+            if GPGExec.DEBUGGING: self.log_message('{} home dir: {}'.format(command, self.gpg_home))
             self.log_message('{} time_out: {} ms'.format(command, self.time_out))
 
             if stdin and len(stdin) > 0:
@@ -265,10 +262,18 @@ class GPGExec(object):
             self.gpg_error = gpg_results.stderr
             
             if GPGExec.DEBUGGING:
-                if self.gpg_output and type(self.gpg_output) == str:
-                    self.log_message(self.gpg_output)
-                if self.gpg_error and type(self.gpg_output) == str:
-                    self.log_message(self.gpg_error)
+                if self.gpg_output:
+                    self.log_message('stdout:')
+                    if type(self.gpg_output) == str:
+                        self.log_message(self.gpg_output)
+                    else:
+                        self.log_message(repr(self.gpg_output))
+                if self.gpg_error:
+                    self.log_message('stderr:')
+                    if type(self.gpg_output) == str:
+                        self.log_message(self.gpg_error)
+                    else:
+                        self.log_message(repr(self.gpg_error))
 
         except sh.ErrorReturnCode as exception:
             self.result_code = exception.exit_code

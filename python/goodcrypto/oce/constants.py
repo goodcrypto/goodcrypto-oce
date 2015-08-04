@@ -3,7 +3,7 @@
     Constants for OCE.
     
     Copyright 2014 GoodCrypto
-    Last modified: 2014-10-17
+    Last modified: 2015-01-01
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
