@@ -747,6 +747,7 @@ class GPGPlugin(AbstractPlugin):
             if data is None or (isinstance(data, str) and len(data.strip()) <= 0):
                 self.log_message('no data so no packets')
             else:
+                self.log_message('looking for packets: {}'.format(data))
                 args = [gpg_constants.LIST_PACKETS]
                 result_code, gpg_output, gpg_error = self.gpg_command(
                     args, passphrase=passphrase, data=data, wait_for_results=True)
