@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-09-20
+    Last modified: 2015-04-21
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -64,17 +64,17 @@ class AbstractCrypto(object):
            * good: PBKDF2
            * bad: store passwords on server, even if encrypted; in the case of gpg, goodcrypto is the 
              'user' and the gpg database is stored on the same server as the server with the passphrases
-         * ssl
-            * SSL is a horrible system.
-            * SSL is far too complex to be implemented securely.
-            * SSL gives attackers far too many options for where to attack.
-            * SSL requires that you decide which certificate authorities you want to trust.
+         * tls/ssl
+            * TLS/SSL is a horrible system.
+            * TLS/SSL is far too complex to be implemented securely.
+            * TLS/SSL gives attackers far too many options for where to attack.
+            * TLS/SSL requires that you decide which certificate authorities you want to trust.
             * Do you trust the Chinese government?
-            * Unfortunately, SSL is often the only option available.
+            * Unfortunately, TLS/SSL is often the only option available.
             * DO: Distribute an asymmetric signature verification key (or a
               hash thereof) with the client side of client-server software, and
               use that to bootstrap your cryptography.
-            * DO: Use SSL to secure your website, email, and other public
+            * DO: Use TLS/SSL to secure your website, email, and other public
               standard Internet-facing servers.
             * DO: Think very carefully about which certificate authorities
               you want to trust.
