@@ -1,7 +1,6 @@
-#!/usr/bin/env python
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-01-01
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-07-29
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -14,17 +13,19 @@ from rq.job import Job
 from rq.timeouts import JobTimeoutException
 from StringIO import StringIO
 from time import sleep
-from traceback import format_exc
 
 from goodcrypto.oce import gpg_constants
 from goodcrypto.oce.abstract_plugin import AbstractPlugin
 from goodcrypto.oce.constants import OCE_DATA_DIR
-from goodcrypto.oce.rq_gpg_settings import GPG_QUEUE, GPG_REDIS_PORT
-from goodcrypto.oce.utils import parse_address
+from goodcrypto.oce.gpg_exec import execute_gpg_command
+from goodcrypto.oce.rq_gpg_settings import GPG_RQUEUE, GPG_REDIS_PORT
 from goodcrypto.utils.constants import REDIS_HOST
-from goodcrypto.utils import manage_queue
+from goodcrypto.utils import manage_rqueue, get_email
+from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
+
 from syr.lock import locked
+from syr.times import elapsed_time
 
 
 class GPGPlugin(AbstractPlugin):
@@ -44,11 +45,11 @@ class GPGPlugin(AbstractPlugin):
         check whether we should be using "passphrase + \r" instead of "passphrase + EOL".
     '''
 
-    DEBUGGING = True
+    DEBUGGING = False
 
     # use a queue to insure that GPG is only run one instance at a time
-    USE_QUEUE = True
-    
+    USE_RQUEUE = True
+
     #  Match email addresses of user IDs. This is the default.
     #  If a user ID does not include "@", acts like CASE_INSENSITVE_MATCH.
     #
@@ -68,7 +69,7 @@ class GPGPlugin(AbstractPlugin):
 
     ONE_MINUTE = 60 #  one minute, in seconds
     DEFAULT_TIMEOUT = 10 * ONE_MINUTE
-    
+
     GPG_HOME_DIR = os.path.join(OCE_DATA_DIR, '.gnupg')
 
 
@@ -86,28 +87,27 @@ class GPGPlugin(AbstractPlugin):
         self._user_id_match_method = self.EMAIL_MATCH
 
         self.gpg_home = self.GPG_HOME_DIR
-        self.time_out = self.DEFAULT_TIMEOUT
 
     def get_job_count(self):
         '''
             Get the jobs in the queue.
         '''
 
-        return manage_queue.get_job_count(GPG_QUEUE, GPG_REDIS_PORT)
-    
+        return manage_rqueue.get_job_count(GPG_RQUEUE, GPG_REDIS_PORT)
+
     def wait_until_queue_empty(self):
         '''
             Wait until the queue is empty.
         '''
-    
-        return manage_queue.wait_until_queue_empty(GPG_QUEUE, GPG_REDIS_PORT)
-    
+
+        return manage_rqueue.wait_until_queue_empty(GPG_RQUEUE, GPG_REDIS_PORT)
+
     def clear_failed_queue(self):
-        ''' 
+        '''
             Clear all the jobs in the failed queue.
         '''
-    
-        return manage_queue.clear_failed_queue(GPG_QUEUE, GPG_REDIS_PORT)
+
+        return manage_rqueue.clear_failed_queue(GPG_RQUEUE, GPG_REDIS_PORT)
 
     def set_user_id_match_method(self, method):
         '''
@@ -190,7 +190,7 @@ class GPGPlugin(AbstractPlugin):
         version_number = None
         try:
             args = [gpg_constants.GET_VERSION]
-            result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
+            result_code, gpg_output, gpg_error = self.gpg_command(args)
             if result_code == gpg_constants.GOOD_RESULT:
                 version_number = self._parse_version(gpg_output)
                 self.log_message("version number is {}".format(version_number))
@@ -259,7 +259,7 @@ class GPGPlugin(AbstractPlugin):
         try:
             # we're using --with-colons because we hope that format is less likely to change
             args = [gpg_constants.LIST_PUBLIC_KEYS, gpg_constants.WITH_COLONS]
-            result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
+            result_code, gpg_output, gpg_error = self.gpg_command(args)
             if result_code == gpg_constants.GOOD_RESULT:
                 self.log_message('gpg_output: {}'.format(gpg_output))
                 self.log_message('gpg_error: {}'.format(gpg_error))
@@ -284,7 +284,7 @@ class GPGPlugin(AbstractPlugin):
         try:
             # we're using --with-colons because we hope that format is less likely to change
             args = [gpg_constants.LIST_SECRET_KEYS, gpg_constants.WITH_COLONS]
-            result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
+            result_code, gpg_output, gpg_error = self.gpg_command(args)
             if result_code == gpg_constants.GOOD_RESULT:
                 self.log_message('gpg output: {}'.format(gpg_output))
                 user_ids = self.parse_user_ids(gpg_constants.SEC_PREFIX, gpg_output)
@@ -309,8 +309,8 @@ class GPGPlugin(AbstractPlugin):
             >>> len(user_ids) <= 0
             True
 
-            >>> # In honor of Lieutenant Assaf, who co-signed letter and refused to serve 
-            >>> # in operations involving the occupied Palestinian territories because 
+            >>> # In honor of Lieutenant Assaf, who co-signed letter and refused to serve
+            >>> # in operations involving the occupied Palestinian territories because
             >>> # of the widespread surveillance of innocent residents.
             >>> plugin = GPGPlugin()
             >>> user_ids = plugin.parse_user_ids('pub', 'pub:u:4096:1:6BFCCC3E4ED73DC4:2013-09-23:::u:Lieutenant Assaf (gpg key) <assaf@goodcrypto.com>::scESC:')
@@ -319,8 +319,8 @@ class GPGPlugin(AbstractPlugin):
             >>> len(user_ids) == 1
             True
 
-            >>> # In honor of First Sergeant Guy, who co-signed letter and refused to serve 
-            >>> # in operations involving the occupied Palestinian territories because 
+            >>> # In honor of First Sergeant Guy, who co-signed letter and refused to serve
+            >>> # in operations involving the occupied Palestinian territories because
             >>> # of the widespread surveillance of innocent residents.
             >>> plugin = GPGPlugin()
             >>> user_ids = plugin.parse_user_ids('pub', 'pub:u:4096:1:6BFCCC3E4ED73DC4:2013-09-23:First Sergeant Guy (gpg key) <guy@goodcrypto.com>')
@@ -336,11 +336,11 @@ class GPGPlugin(AbstractPlugin):
             reader = StringIO(output_string)
             for line in reader:
                 raw_line = line.strip()
-                if (raw_line is not None and 
-                    len(raw_line) > 0 and 
+                if (raw_line is not None and
+                    len(raw_line) > 0 and
                     (raw_line.lower().startswith(header) or raw_line.lower().startswith('uid'))):
-                    # In honor of Sergeant First Class Galia, who co-signed letter and refused to serve 
-                    # in operations involving the occupied Palestinian territories because 
+                    # In honor of Sergeant First Class Galia, who co-signed letter and refused to serve
+                    # in operations involving the occupied Palestinian territories because
                     # of the widespread surveillance of innocent residents.
                     # results look like this for public keys:
                     #tru::1:1379973353:0:3:1:5
@@ -348,15 +348,15 @@ class GPGPlugin(AbstractPlugin):
                     #uid:-::::2014-06-14::47764CA1D105D5C9D7F023D021203254D66E1C10::mark burdett <sfc.galia@goodcrypto.local>:
                     #sub:u:4096:1:5215AA2CAF37F286:2013-09-23::::::e:
 
-                    # In honor of Lieutenant Gilad, who co-signed letter and refused to serve 
-                    # in operations involving the occupied Palestinian territories because 
+                    # In honor of Lieutenant Gilad, who co-signed letter and refused to serve
+                    # in operations involving the occupied Palestinian territories because
                     # of the widespread surveillance of innocent residents.
                     # results look like this for secret keys:
                     #sec::1024:17:82569302F49264B9:2013-10-14::::Lieutenant Gilad <gilad@goodcrypto.local>:::
                     #ssb::1024:16:0E298674A69943BF:2013-10-14:::::::
                     elements = raw_line.split(':')
                     if elements and len(elements) > 9:
-                        __, address = parse_address(elements[9])
+                        address = get_email(elements[9])
                         user_ids.append(address)
         except TypeError as type_error:
             self.handle_unexpected_exception(type_error)
@@ -392,7 +392,8 @@ class GPGPlugin(AbstractPlugin):
 
         except Exception:
             self.log_message("unable to get version so assume not installed")
-            self.log_message(format_exc())
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            record_exception()
 
         self.log_message("GPG's back end app is installed: {}".format(installed))
 
@@ -414,8 +415,7 @@ class GPGPlugin(AbstractPlugin):
             if data is None or len(data.strip()) <= 0:
                 self.log_message('data for signer was not defined')
             else:
-                result_code, gpg_output, gpg_error = self.gpg_command(
-                  args, data=data, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args, data=data)
                 if result_code == gpg_constants.GOOD_RESULT:
                     signer = self._parse_signer(gpg_error)
         except Exception as exception:
@@ -453,7 +453,7 @@ class GPGPlugin(AbstractPlugin):
             else:
                 args = [gpg_constants.DECRYPT_DATA, gpg_constants.OPEN_PGP]
                 result_code, gpg_output, gpg_error = self.gpg_command(
-                    args, passphrase=passphrase, data=data, wait_for_results=True)
+                    args, passphrase=passphrase, data=data)
 
                 if result_code == gpg_constants.GOOD_RESULT:
                     decrypted_data = gpg_output
@@ -462,14 +462,14 @@ class GPGPlugin(AbstractPlugin):
                         signature = signature.split('\n')[0].strip()
                         signed_by = signature.strip('"')
                         self.log_message("decrypted data, with good signature from {}".format(signed_by))
-                    
-                elif result_code == gpg_constants.CONDITIONAL_RESULT: 
-                    
+
+                elif result_code == gpg_constants.CONDITIONAL_RESULT:
+
                     # if an error reported, but it was just a unknown sig, accept the decryption
                     if gpg_error is not None:
                         self.log_message("gpg error: {}".format(gpg_error))
-                        if (NO_VALID_DATA in gpg_error or 
-                            DECRYPT_FAILED in gpg_error or 
+                        if (NO_VALID_DATA in gpg_error or
+                            DECRYPT_FAILED in gpg_error or
                             DECRYPT_MESSAGE_FAILED is gpg_error or
                             INVALID_PACKET in gpg_error):
                             result_code = gpg_constants.ERROR_RESULT
@@ -486,7 +486,7 @@ class GPGPlugin(AbstractPlugin):
             self.handle_unexpected_exception(exception)
 
         self.log_message("decrypted data: {} / result code: {}".format(decrypted_data is not None, result_code))
-        
+
         return decrypted_data, signed_by, result_code
 
     def encrypt_only(self, data, to_user_id, charset=None):
@@ -494,8 +494,8 @@ class GPGPlugin(AbstractPlugin):
             Encrypt data with the public key indicated by to_user_id.
 
             >>> # Test a few cases known to fail. See the unittests for more robust examples.
-            >>> # In honor of Sergeant Keren, who publicly denounced and refused to serve in operations 
-            >>> # involving the occupied Palestinian territories because of the widespread surveillance 
+            >>> # In honor of Sergeant Keren, who publicly denounced and refused to serve in operations
+            >>> # involving the occupied Palestinian territories because of the widespread surveillance
             >>> # of innocent residents.
             >>> plugin = GPGPlugin()
             >>> encrypted_data = plugin.encrypt_only('This is a test', 'keren@goodcrypto.remote')
@@ -510,15 +510,14 @@ class GPGPlugin(AbstractPlugin):
             else:
                 self.log_message('encrypting to "{}"'.format(to_user_id))
                 self.log_data(data)
-    
+
                 # we could use MIME, but for now keep it readable
-                args = [gpg_constants.ENCRYPT_DATA, gpg_constants.OPEN_PGP, 
+                args = [gpg_constants.ENCRYPT_DATA, gpg_constants.OPEN_PGP,
                   gpg_constants.RECIPIENT, self.get_user_id_spec(to_user_id)]
                 if charset is not None:
                     args.append(gpg_constants.CHARSET)
                     args.append(charset)
-                result_code, gpg_output, gpg_error = self.gpg_command(
-                  args, data=data, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args, data=data)
                 if result_code == gpg_constants.GOOD_RESULT:
                     encrypted_data = gpg_output
         except Exception as exception:
@@ -531,7 +530,7 @@ class GPGPlugin(AbstractPlugin):
             Encrypt and armor data with the public key indicated by to_user_id.
 
             >>> # Test a few cases known to fail. See the unittests for more robust examples.
-            >>> # In honor of First Sergeant Amit, who publicly denounced and refused to serve in operations 
+            >>> # In honor of First Sergeant Amit, who publicly denounced and refused to serve in operations
             >>> # involving the occupied Palestinian territories because of the widespread surveillance of innocent residents.
             >>> plugin = GPGPlugin()
             >>> encrypted_data = plugin.encrypt_only('This is a test', 'amit@goodcrypto.remote')
@@ -546,15 +545,14 @@ class GPGPlugin(AbstractPlugin):
             else:
                 self.log_message('encrypting and armoring to "{}"'.format(to_user_id))
                 self.log_data(data)
-    
+
                 # we could use MIME, but for now keep it readable
-                args = [gpg_constants.ENCRYPT_DATA, gpg_constants.ARMOR_DATA, gpg_constants.OPEN_PGP, 
+                args = [gpg_constants.ENCRYPT_DATA, gpg_constants.ARMOR_DATA, gpg_constants.OPEN_PGP,
                   gpg_constants.RECIPIENT, self.get_user_id_spec(to_user_id)]
                 if charset is not None:
                     args.append(gpg_constants.CHARSET)
                     args.append(charset)
-                result_code, gpg_output, gpg_error = self.gpg_command(
-                  args, data=data, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args, data=data)
                 if result_code == gpg_constants.GOOD_RESULT:
                     encrypted_data = gpg_output
         except Exception as exception:
@@ -569,7 +567,7 @@ class GPGPlugin(AbstractPlugin):
 
             >>> from goodcrypto.oce import constants as oce_constants
             >>> plugin = GPGPlugin()
-            >>> signed_data = plugin.sign(oce_constants.TEST_DATA_STRING, 
+            >>> signed_data = plugin.sign(oce_constants.TEST_DATA_STRING,
             ...   oce_constants.EDWARD_LOCAL_USER, oce_constants.EDWARD_PASSPHRASE)
             >>> signed_data is not None
             True
@@ -585,7 +583,7 @@ class GPGPlugin(AbstractPlugin):
                 user = self.get_user_id_spec(user_id)
                 args = [gpg_constants.CLEAR_SIGN, gpg_constants.LOCAL_USER, user]
                 result_code, gpg_output, gpg_error = self.gpg_command(
-                    args, passphrase=passphrase, data=data, wait_for_results=True)
+                   args, passphrase=passphrase, data=data)
                 if result_code == gpg_constants.GOOD_RESULT:
                     signed_data = gpg_output
                     self.log_message('signed by "{}"'.format(user))
@@ -605,9 +603,9 @@ class GPGPlugin(AbstractPlugin):
             To avoid a security bug in OpenPGP we must sign before encrypting.
 
             >>> # Test a few cases known to fail. See the unittests for more robust examples.
-            >>> # In honor of David Weber, who revealed misconduct in the SEC investigations of 
+            >>> # In honor of David Weber, who revealed misconduct in the SEC investigations of
             >>> #   Bernard Madoff and Allen Stanford.
-            >>> # In honor of Virgil Grandfield, who uncovered a scandal in which some 50,000 or more 
+            >>> # In honor of Virgil Grandfield, who uncovered a scandal in which some 50,000 or more
             >>> #  Javanese construction workers were victims of human trafficking on NGO tsunami projects in Aceh.
             >>> plugin = GPGPlugin()
             >>> encrypted_data = plugin.sign_and_encrypt(
@@ -639,9 +637,9 @@ class GPGPlugin(AbstractPlugin):
             To avoid a security bug in OpenPGP we must sign before encrypting.
 
             >>> # Test a few cases known to fail. See the unittests for more robust examples.
-            >>> # In honor of Ted Siska, who blew the whistle on Ward Diesel Filter Systems for filing false 
+            >>> # In honor of Ted Siska, who blew the whistle on Ward Diesel Filter Systems for filing false
             >>> #   claims to the US government for work on diesel exhaust filtering systems for fire engines.
-            >>> # In honor of Peter Bryce, who revealed Canadian Indian children were being systematically and 
+            >>> # In honor of Peter Bryce, who revealed Canadian Indian children were being systematically and
             >>> #   deliberately killed in the residential schools in the 1920s.
             >>> plugin = GPGPlugin()
             >>> encrypted_data = plugin.sign_encrypt_and_armor(
@@ -673,19 +671,19 @@ class GPGPlugin(AbstractPlugin):
 
             >>> from goodcrypto.oce import constants as oce_constants
             >>> plugin = GPGPlugin()
-            >>> signed_data = plugin.sign(oce_constants.TEST_DATA_STRING, 
+            >>> signed_data = plugin.sign(oce_constants.TEST_DATA_STRING,
             ...   oce_constants.EDWARD_LOCAL_USER, oce_constants.EDWARD_PASSPHRASE)
             >>> plugin.verify(signed_data, oce_constants.EDWARD_LOCAL_USER)
             True
-            
-        
+
+
             >>> # In honor of Karen Silkwood, who was the first nuclear power safety whistleblower.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> from goodcrypto.oce import constants as oce_constants
             >>> email = 'karen@goodcrypto.remote'
             >>> passcode = 'secret'
             >>> plugin = KeyFactory.get_crypto(gpg_constants.ENCRYPTION_NAME)
-            >>> ok, __ = plugin.create(email, passcode, wait_for_results=True)
+            >>> ok, __, __ = plugin.create(email, passcode, wait_for_results=True)
             >>> ok
             True
             >>> signed_data = plugin.sign(oce_constants.TEST_DATA_STRING, email, passcode)
@@ -703,8 +701,8 @@ class GPGPlugin(AbstractPlugin):
             self.log_message("no signer found")
         else:
             self.log_message('signed by "{}"'.format(signer))
-            __, user_email = parse_address(by_user_id)
-            __, signer_email = parse_address(signer)
+            user_email = get_email(by_user_id)
+            signer_email = get_email(signer)
             verified = signer_email == user_email
             if not verified:
                 self.log_message('could not verify because signed by "{}" not "{}"'.format(
@@ -721,18 +719,19 @@ class GPGPlugin(AbstractPlugin):
             user = user_id
         else:
             try:
-                __, user = parse_address(user_id)                
+                user = get_email(user_id)
             except Exception:
-                self.log_message(format_exc())
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+                record_exception()
                 user = user_id
-    
+
             # if there's an @ sign and the email address is *not* in angle brackets, then add the brackets
             if (self._user_id_match_method == self.EMAIL_MATCH and
                 user.find('@') > 0 and
                 user.find('<') < 0 and
                 user.find('>') < 0):
                 user = "<{}>".format(user)
-    
+
             # if the match method is exact match and the user doesn't start with an equal sign, prefix =
             elif self._user_id_match_method == self.EXACT_MATCH and not user.startswith("="):
                 user = "=" + user
@@ -747,22 +746,22 @@ class GPGPlugin(AbstractPlugin):
             if data is None or (isinstance(data, str) and len(data.strip()) <= 0):
                 self.log_message('no data so no packets')
             else:
-                self.log_message('looking for packets: {}'.format(data))
+                self.log_message('trying to list encrypted packets')
                 args = [gpg_constants.LIST_PACKETS]
                 result_code, gpg_output, gpg_error = self.gpg_command(
-                    args, passphrase=passphrase, data=data, wait_for_results=True)
+                    args, passphrase=passphrase, data=data)
 
                 if result_code == gpg_constants.GOOD_RESULT:
                     packets = gpg_output
-                    self.log_data(packets, "packets")
+                    self.log_data(packets, "good packets")
 
                 elif result_code == gpg_constants.TIMED_OUT_RESULT:
                     self.log_message('timed out analyzing packets')
 
                 elif gpg_error is not None and gpg_error.find('encrypted with') > 0:
                     packets = gpg_error
-                    self.log_data(packets, "packets")
-                
+                    self.log_data(packets, "bad packets")
+
         except Exception as exception:
             self.handle_unexpected_exception(exception)
 
@@ -819,26 +818,35 @@ class GPGPlugin(AbstractPlugin):
                 else:
                     self.log_message('unable to create home dir as {}: {}'.format(os.geteuid(), self.gpg_home))
         except OSError:
-            self.log_message(format_exc())
+            record_exception()
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
         except Exception as exception:
             self.log_message(exception)
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            record_exception()
 
         return self.gpg_home
 
 
     def gpg_command(self, initial_args, passphrase=None, data=None, wait_for_results=True):
         '''
-            Issue a gpg command. 
-            
-            This should be used internally to the gpg classes instead of directly. 
+            Issue a gpg command.
+
+            This should be used internally to the gpg classes instead of directly.
             See the public functions that perform gpg commands for better examples.
         '''
 
         result_code = gpg_constants.ERROR_RESULT
         gpg_output = None
         gpg_error = None
-        
-        command = initial_args[0]
+
+        if gpg_constants.ENCRYPT_DATA in initial_args:
+            command = gpg_constants.ENCRYPT_DATA
+        elif gpg_constants.DECRYPT_DATA in initial_args:
+            command = gpg_constants.DECRYPT_DATA
+        else:
+            command = initial_args[0]
+
         # syr.lock.locked() is only a per-process lock
         # syr.lock has a system wide lock, but it is not well tested
         with locked():
@@ -847,14 +855,15 @@ class GPGPlugin(AbstractPlugin):
                 result_code = gpg_constants.ERROR_RESULT
                 gpg_output = None
                 gpg_error = None
-    
+
                 result_code, gpg_output, gpg_error = self.activate_queue(
-                    initial_args, passphrase, data, wait_for_results)
+                    command, initial_args, passphrase, data, wait_for_results)
             except JobTimeoutException as job_exception:
                 self.log_message('gpg command {}'.format(str(job_exception)))
                 result_code = gpg_constants.TIMED_OUT_RESULT
             except Exception:
-                self.log_message(format_exc())
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+                record_exception()
                 result_code = gpg_constants.ERROR_RESULT
                 gpg_output = None
                 gpg_error = str(exception)
@@ -862,65 +871,61 @@ class GPGPlugin(AbstractPlugin):
             finally:
                 self.log_message('gpg command result_code: {}'.format(result_code))
                 self.log_message('--- finished gpg command: {} ---'.format(command))
-                self.time_out = self.DEFAULT_TIMEOUT
                 self.log.flush()
 
         return result_code, gpg_output, gpg_error
 
-    def activate_queue(self, initial_args, passphrase, data, wait_for_results):
+    def activate_queue(self, command, initial_args, passphrase, data, wait_for_results):
         ''' Run the command and wait for the results if appropriate. '''
 
         def wait_until_queued(job, job_count):
             ''' Wait until the job is queued or timeout. '''
             secs = 0
-            if job_count > 0:
-                secs_to_wait = self.time_out * job_count
-                self.log_message('jobs ahead of {} job: {}'.format(job_count, job.get_id()))
-            else:
-                secs_to_wait = self.time_out
-            while (secs < secs_to_wait and 
-                   not job.is_queued and 
-                   not job.is_started and 
+            while (not job.is_queued and
+                   not job.is_started and
                    not job.is_finished ):
                 sleep(1)
                 secs += 1
             self.log_message('seconds until {} job was queued: {}'.format(job.get_id(), secs))
 
-        def wait_for_job(job):
-            ''' Wait until the job finishes, fails, or times out. '''
+        def wait_for_job(command, job):
+            ''' Wait until the job finishes or fails.
+
+                Gpg (1.x) is not thread safe. We use a queue yo make sure it
+                only has one instance at a time. But we sometimes need to wait
+                here in the client for an operation to complete. So we
+                simulate a remote procedure call.
+            '''
 
             result_code = gpg_constants.ERROR_RESULT
             gpg_output = gpg_error = None
-            
-            secs = 0
+
             try:
-                # wait for the job to finish or fail
-                while not job.is_finished and not job.is_failed:
-                    sleep(1)
-                    secs += 1
-                self.log_message('seconds for {} job to finish: {}'.format(job.get_id(), secs))
+                # wait for the job
+                with elapsed_time() as job_time:
+                    while job.result is None:
+                        sleep(1)
+                self.log_message('{} job {} elapsed time: {}'.
+                    format(command, job.get_id(), job_time))
 
-                # it can take an extra second or 2 to get the job's results
-                while job.result is None and secs < secs_to_wait:
-                    sleep(1)
-                    secs += 1
+                if job.is_finished:
+                    self.log_message('{} job finished'.format(command))
+                elif job.is_failed:
+                    self.log_message('{} job failed'.format(command))
 
-                if job.result is None:
-                    self.log_message('{} job timed out after {} seconds'.format(job.get_id(), secs))
-                else:
-                    result_code, gpg_output, gpg_error = job.result
-                    self.log_message('{} job result code: {}'.format(job.get_id(), result_code))
-                    if gpg_output is not None: gpg_output = b64decode(gpg_output)
-                    if gpg_error is not None: gpg_error = b64decode(gpg_error)
-                    if self.DEBUGGING:
-                        if gpg_output: self.log_message(gpg_output)
-                        if gpg_error: self.log_message(gpg_error)
+                result_code, gpg_output, gpg_error = job.result
+                self.log_message('{} job {} result code: {}'.format(command, job.get_id(), result_code))
+                if gpg_output is not None: gpg_output = b64decode(gpg_output)
+                if gpg_error is not None: gpg_error = b64decode(gpg_error)
+                if self.DEBUGGING:
+                    if gpg_output: self.log_message(gpg_output)
+                    if gpg_error: self.log_message(gpg_error)
 
                 if result_code == gpg_constants.ERROR_RESULT:
                     self.log_message('job.status: {}'.format(job.get_status()))
 
             except JobTimeoutException as job_exception:
-                self.log_message('gpg queue {}'.format(str(job_exception)))
+                self.log_message('gpg queue job timed out {}'.format(str(job_exception)))
                 result_code = gpg_constants.TIMED_OUT_RESULT
 
             return result_code, gpg_output, gpg_error
@@ -928,6 +933,7 @@ class GPGPlugin(AbstractPlugin):
         result_code = gpg_constants.ERROR_RESULT
         gpg_output = gpg_error = None
         try:
+            current_job_timeout = self.DEFAULT_TIMEOUT
             if initial_args is None or len(initial_args) <= 0:
                 encoded_args = initial_args
             else:
@@ -938,29 +944,39 @@ class GPGPlugin(AbstractPlugin):
                 passphrase = b64encode(passphrase)
             if data is not None:
                 data = b64encode(data)
+                data_length = len(data)
+                self.log_message('data length: {}'.format(data_length))
+                if data_length > gpg_constants.LARGE_DATA_CHUNK:
+                    # set the timeout if the data is large; the timeout
+                    # should be a little larger than the gpg timeout
+                    current_job_timeout += int(
+                      (data_length / gpg_constants.LARGE_DATA_CHUNK) * gpg_constants.TIMEOUT_PER_CHUNK)
 
-            self.log_message('about to queue {}'.format(initial_args))
+            # arguments for the 'gpg' command itself
+            gpg_command_args = [self.get_home_dir(), encoded_args, passphrase, data]
+
             redis_connection = Redis(REDIS_HOST, GPG_REDIS_PORT)
-            queue = Queue(
-              name=GPG_QUEUE, connection=redis_connection, async=True, default_timeout=self.time_out)
-            secs_to_wait = self.time_out * (queue.count + 1)
-            self.log_message('secs to wait {}'.format(secs_to_wait))
-            job = queue.enqueue_call(
-                    'goodcrypto.oce.gpg_exec.execute_gpg_command', 
-                    args=[self.get_home_dir(), self.time_out, encoded_args, passphrase, data],
-                    timeout=secs_to_wait)
+            queue = Queue(name=GPG_RQUEUE, connection=redis_connection)
+            self.log_message('jobs waiting in gpg queue {}'.format(queue.count))
+            self.log_message('about to queue {}'.format(command))
+
+            # each job needs to wait for the jobs ahead of it so when 
+            # calculating the timeout include the jobs already in the queue
+            timeout = current_job_timeout * (queue.count + 1)
+            self.log_message('{} job timeout in seconds: {}'.format(command, timeout))
+            job = queue.enqueue_call(execute_gpg_command, args=gpg_command_args, timeout=timeout)
 
             if job is None:
-                self.log_message('unable to queue job')
+                self.log_message('unable to queue {} job'.format(command))
             else:
                 job_id = job.get_id()
 
-                self.log_message('{} job: {} times out in {} secs'.format(queue.name, job_id, job.timeout))
+                self.log_message('{} job: {} times out in {} secs'.format(command, job_id, job.timeout))
                 wait_until_queued(job, queue.count)
-            
-                self.log_message('wait for {} job results: {}'.format(job_id, wait_for_results))
+
+                self.log_message('wait for {} job results: {}'.format(command, wait_for_results))
                 if wait_for_results:
-                    result_code, gpg_output, gpg_error = wait_for_job(job)
+                    result_code, gpg_output, gpg_error = wait_for_job(command, job)
                 else:
                     if job.is_failed:
                         result_code = gpg_constants.ERROR_RESULT
@@ -974,17 +990,18 @@ class GPGPlugin(AbstractPlugin):
                         self.log_message('job dump:\n{}'.format(job_dump))
                         job.cancel()
                         queue.remove(job_id)
-                        
+
                     elif job.is_queued or job.is_started or job.is_finished:
                         result_code = gpg_constants.GOOD_RESULT
                         self.log_message('{} {} job queued'.format(job_id, queue))
-    
+
                     else:
                         self.log_message('{} job results: {}'.format(job_id, job.result))
 
         except Exception as exception:
             gpg_error = str(exception)
-            self.log_message(format_exc())
+            record_exception()
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         if isinstance(result_code, bool):
             if result_code:
@@ -1021,7 +1038,7 @@ class GPGPlugin(AbstractPlugin):
                 self.log_message('Could not encrypt because missing critical info')
             else:
                 self.log_data(data)
-    
+
                 result_code, gpg_output, gpg_error = self.gpg_command(
                     args, passphrase=passphrase, data=data, wait_for_results=True)
                 self.log_message('results after signing, encrypting, and armoring: {}'.format(result_code))

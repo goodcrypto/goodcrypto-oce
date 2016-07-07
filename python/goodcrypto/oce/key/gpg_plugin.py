@@ -1,22 +1,21 @@
-#!/usr/bin/env python
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-01-01
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-08-02
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import os, re, shutil
 from tempfile import mkdtemp
 from time import sleep
-from traceback import format_exc
 
 from goodcrypto.oce import gpg_constants
-from goodcrypto.oce.constants import LOG_PASSPHRASES
 from goodcrypto.oce.gpg_plugin import GPGPlugin as GPGCryptoPlugin
 from goodcrypto.oce.key import gpg_utils
 from goodcrypto.oce.key.abstract_key import AbstractKey
 from goodcrypto.oce.key.gpg_constants import NAME
-from goodcrypto.oce.utils import is_expired, parse_address
+from goodcrypto.oce.utils import is_expired
+from goodcrypto.utils import parse_address, get_email
+from goodcrypto.utils.exception import record_exception
 #from syr.sync_function import synchronized
 
 
@@ -98,7 +97,8 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             function_supported = func in dir(self)
         except Exception:
             function_supported = False
-            self.log_message(format_exc())
+            record_exception()
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         return function_supported
 
@@ -116,7 +116,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.create('moritz@goodcrypto.local', 'a secret code')
-            (True, False)
+            (True, False, False)
 
             >>> # In honor of Roger Dingledine, one of the original developers of the Tor project.
             >>> from goodcrypto.oce.key.constants import EXPIRES_IN, EXPIRATION_UNIT
@@ -124,9 +124,9 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> email = 'roger@goodcrypto.local'
             >>> plugin = KeyFactory.get_crypto(NAME)
             >>> plugin.create(email, 'a secret code', wait_for_results=True)
-            (True, False)
+            (True, False, False)
             >>> plugin.create(email, 'another code', wait_for_results=True)
-            (True, False)
+            (True, False, True)
             >>> encrypted_data = plugin.encrypt_only('Test data', email)
             >>> unencrypted_data, signed_by, result_code = plugin.decrypt(encrypted_data, 'another code')
             >>> result_code == gpg_constants.ERROR_RESULT
@@ -136,10 +136,9 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
         '''
 
         result_code = gpg_constants.ERROR_RESULT
+        key_already_exists = False
         try:
             self.log_message('gen key for {} that expires within {}'.format(user_id, expiration))
-            if LOG_PASSPHRASES:
-                self.log_message('DEBUG ONLY! passcode: {}'.format(passcode))
     
             name, email = parse_address(user_id)
             if name == None or len(name) <= 0:
@@ -163,32 +162,32 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             data += '{}{}'.format(gpg_constants.COMMIT_KEY, gpg_constants.EOL)
     
             if GPGPlugin.DEBUGGING:
-                if LOG_PASSPHRASES:
-                    self.log_message(data)
-                else:
-                    self.log_message('Name-Real: {}'.format(name))
-                    self.log_message('Name-Email: {}'.format(email))
-                    self.log_message('Expire-Date: {}{}'.format(expires_in, expiration_unit))
+                self.log_message('Name-Real: {}'.format(name))
+                self.log_message('Name-Email: {}'.format(email))
+                self.log_message('Expire-Date: {}{}'.format(expires_in, expiration_unit))
 
-            # use the default timeout unless waiting for results
-            if wait_for_results or self.USE_QUEUE:
-                self.time_out = 20 * self.ONE_MINUTE 
-                
             result_code, gpg_output, gpg_error = self.gpg_command(
                 [gpg_constants.GEN_KEY], data=data, wait_for_results=wait_for_results)
-            self.log_message('created key for {} <{}>: {} result code'.format(name, email, result_code))
-            if gpg_output: self.log_message(gpg_output)
-            if gpg_error: self.log_message(gpg_error)
+            if result_code == gpg_constants.GOOD_RESULT and gpg_output == gpg_constants.KEY_EXISTS:
+                key_already_exists = True
+                self.log_message('key already exists for {}'.format(email))
+            else:
+                self.log_message('created key for {} <{}>: {} result code'.format(name, email, result_code))
+                if gpg_output: self.log_message(gpg_output)
+                if gpg_error: self.log_message(gpg_error)
 
         except Exception as exception:
             self.handle_unexpected_exception(exception)
         finally:
             self.log_message('finished trying to gen key for {}'.format(user_id))
 
-        self.log_message('result ok: {}'.format(result_code == gpg_constants.GOOD_RESULT))
-        self.log_message('timedout: {}'.format(result_code == gpg_constants.TIMED_OUT_RESULT))
+        result_ok = result_code == gpg_constants.GOOD_RESULT
+        timed_out = result_code == gpg_constants.TIMED_OUT_RESULT
+        
+        self.log_message('result ok: {}'.format(result_ok))
+        self.log_message('timedout: {}'.format(timed_out))
 
-        return result_code == gpg_constants.GOOD_RESULT, result_code == gpg_constants.TIMED_OUT_RESULT
+        return result_ok, timed_out, key_already_exists
 
 
     def delete(self, user_id):
@@ -206,7 +205,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> plugin.delete('caspar@goodcrypto.local')
             True
             >>> plugin.delete('unknown@goodcrypto.local')
-            False
+            True
             >>> plugin.delete(None)
             False
             >>> from shutil import rmtree
@@ -219,25 +218,22 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 result_ok = False
                 self.log_message('no need to delete key for blank user id')
             else:
-                __, address = parse_address(user_id)
+                address = get_email(user_id)
                 self.log_message('deleting: {}'.format(address))
-                tries = 0
-                done = False
-                while not done:
+                result_code = gpg_constants.GOOD_RESULT
+                while result_code == gpg_constants.GOOD_RESULT:
                     # delete the public and private key -- do *not* include <> or quotes
                     args = [gpg_constants.DELETE_KEYS, address]
-                    result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
-                    tries += 1
-                    if result_code != gpg_constants.GOOD_RESULT:
-                        done = True
-                        # if this is the first attempt and it failed, then remember that result
-                        if tries == 1:
-                            result_ok = False
-                            if gpg_output: self.log_message(gpg_output)
-                            if gpg_error: self.log_message(gpg_error)
+                    result_code, gpg_output, gpg_error = self.gpg_command(args)
+                    if result_code == gpg_constants.GOOD_RESULT:
+                        result_ok = True
+                        if gpg_output and len(gpg_output.strip()) > 0: self.log_message(gpg_output)
+                        if gpg_error and len(gpg_error.strip()) > 0: self.log_message(gpg_error)
+
         except Exception as exception:
             result_ok = False
-            self.log_message(format_exc())
+            record_exception()
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
             self.handle_unexpected_exception(exception)
 
         self.log_message('delete ok: {}'.format(result_ok))
@@ -284,7 +280,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             if result_ok:
                 # delete the private key
                 args = [gpg_constants.DELETE_SECRET_KEY, fingerprint]
-                result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args)
                 if result_code != gpg_constants.GOOD_RESULT:
                     message = 'unable to delete private key for {}: {}'.format(user_id, result_code)
                     self.log_message(message)
@@ -330,7 +326,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
         try:
             if user_id:
                 args = [gpg_constants.EXPORT_KEY, gpg_constants.ARMOR_DATA, self.get_user_id_spec(user_id)]
-                result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args)
                 if result_code == gpg_constants.GOOD_RESULT:
                     public_key = gpg_output
                     self.log_message('len public key: {}'.format(len(public_key)))
@@ -380,7 +376,8 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 try:
                     self.delete(user_id)
                 except Exception:
-                    self.log_message(format_exc())
+                    record_exception()
+                    self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         try:
             result_ok = False
@@ -397,8 +394,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
                     remove_matching_keys(id_fingerprint_pairs)
                     
-                result_code, gpg_output, gpg_error = self.gpg_command(
-                  args, data=data, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args, data=data)
                 if result_code == gpg_constants.GOOD_RESULT:
                     result_ok = True
                 else:
@@ -462,7 +458,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 shutil.rmtree(temp_home_dir, ignore_errors=True)
                 self.log_message('restored home dir and destroyed temp dir')
         except:
-            self.handle_unexpected_exception(format_exc())
+            record_exception()
 
         return result_ok
 
@@ -492,7 +488,8 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             self.log_message('extracted user ids: {}'.format(user_ids))
         except Exception:
             user_ids = []
-            self.log_message(format_exc())
+            record_exception()
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         return user_ids
 
@@ -571,7 +568,8 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 else:
                     self.log_message('unable to find private key for {}'.format(user_id))
             except Exception:
-                self.log_message(format_exc())
+                record_exception()
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
             self.log_message('-- finished is_passcode_valid --')
 
@@ -602,25 +600,15 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
         else:
             try:
-                key_exists = False
-                private_user_ids = self.get_private_user_ids()
-                
-                # looking for a matching private key
-                if private_user_ids is None:
-                    self.log_message('no private keys found')
-                else:
-                    __, address = parse_address(user_id)
-                    for private_user_id in private_user_ids:
-                        if private_user_id.lower() == address.lower():
-                            key_exists = True
-                            break
+                email = get_email(user_id)
+                args = [gpg_constants.LIST_SECRET_KEYS, self.get_user_id_spec(email)]
+                result_code, gpg_output, gpg_error = self.gpg_command(args)
+                key_exists = result_code == gpg_constants.GOOD_RESULT
             
-                if key_exists:
-                    self.log_message('found private key for {}'.format(user_id))
-                else:
-                    self.log_message('unable to find private key for {}'.format(user_id))
+                self.log_message('found private key for {}: {}'.format(user_id, key_exists))
             except Exception:
-                self.log_message(format_exc())
+                record_exception()
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         return key_exists
 
@@ -647,25 +635,15 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
         else:
             try:
-                key_exists = False
-                public_user_ids = self.get_user_ids()
-                
-                # looking for a matching public key
-                if public_user_ids is None:
-                    self.log_message('no public keys found')
-                else:
-                    __, address = parse_address(user_id)
-                    for public_user_id in public_user_ids:
-                        if public_user_id.lower() == address.lower():
-                            key_exists = True
-                            break
+                email = get_email(user_id)
+                args = [gpg_constants.LIST_PUBLIC_KEYS, self.get_user_id_spec(email)]
+                result_code, gpg_output, gpg_error = self.gpg_command(args)
+                key_exists = result_code == gpg_constants.GOOD_RESULT
             
-                if key_exists:
-                    self.log_message('found public key for {}'.format(user_id))
-                else:
-                    self.log_message('unable to find public key for {}'.format(user_id))
+                self.log_message('found public key for {}: {}'.format(user_id, key_exists))
             except Exception:
-                self.log_message(format_exc())
+                record_exception()
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         return key_exists
 
@@ -705,13 +683,13 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
         fingerprint = expiration_date = None
         try:
-            (__, email) = parse_address(user_id)
+            email = get_email(user_id)
             self.log_message('getting fingerprint for {}'.format(email))
             
             # add angle brackets around the email address so we don't
             # confuse the email with any similar addresses and non-ascii characters are ok
             args = [gpg_constants.GET_FINGERPRINT, self.get_user_id_spec(email)]
-            result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=True)
+            result_code, gpg_output, gpg_error = self.gpg_command(args)
             if result_code == gpg_constants.GOOD_RESULT:
                 if GPGPlugin.DEBUGGING: self.log_message('fingerprint gpg output: {}'.format(gpg_output))
                 fingerprint, expiration_date = gpg_utils.parse_fingerprint_and_expiration(gpg_output)
@@ -755,7 +733,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                     self.log_message('getting fingerprint from key block:\n{}'.format(data))
 
                 args = [gpg_constants.GET_USER_FROM_BLOCK]
-                result_code, gpg_output, gpg_error = self.gpg_command(args, data=data, wait_for_results=True)
+                result_code, gpg_output, gpg_error = self.gpg_command(args, data=data)
                 if result_code == gpg_constants.GOOD_RESULT:
                     if GPGPlugin.DEBUGGING: self.log_message('block fingerprint gpg output: {}'.format(gpg_output))
                     id_fingerprint_pairs = gpg_utils.parse_id_fingerprint_pairs(gpg_output)

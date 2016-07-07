@@ -1,13 +1,11 @@
-#!/usr/bin/env python
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2014-11-17
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-07-08
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import os, sh
 from importlib import import_module
-from traceback import format_exc
 
 from goodcrypto.utils.log_file import LogFile
 

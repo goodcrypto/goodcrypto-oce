@@ -1,18 +1,14 @@
-#!/usr/bin/env python
 '''
     Constants for OCE.
     
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-01-01
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-07-31
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 
 import os
 from goodcrypto.constants import GOODCRYPTO_DATA_DIR
-
-#  WARNING! LOG_PASSPHRASES should *never* ship set to true!
-LOG_PASSPHRASES = False
 
 OCE_DATA_DIR = os.path.join(GOODCRYPTO_DATA_DIR, 'oce')
 

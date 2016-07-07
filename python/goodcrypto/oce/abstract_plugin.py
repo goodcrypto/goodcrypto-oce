@@ -1,14 +1,12 @@
-#!/usr/bin/env python
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2014-09-20
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-07-08
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 
 import os
 from abc import abstractmethod
-from traceback import format_exc
 
 from goodcrypto.oce.abstract_crypto import AbstractCrypto
 

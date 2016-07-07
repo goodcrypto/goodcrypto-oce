@@ -1,17 +1,17 @@
-#!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-12-31
+    Last modified: 2015-07-27
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import re
 from datetime import date
-from traceback import format_exc
 
 from goodcrypto.oce import gpg_constants
 from goodcrypto.oce.key.constants import EXPIRES_IN, EXPIRATION_UNIT
-from goodcrypto.oce.utils import parse_address, strip_fingerprint
+from goodcrypto.oce.utils import strip_fingerprint
+from goodcrypto.utils import get_email
+from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
 
 _log = LogFile()
@@ -23,8 +23,13 @@ def parse_id_fingerprint_pairs(output):
         
         >>> output = 'pub  1024D/0x68B7AB8957548DCD 1998-07-07 Werner Koch (gnupg sig) <dd9jn@gnu.org>\\n      Key fingerprint = 6BD9 050F D8FC 941B 4341  2DCC 68B7 AB89 5754 8DCD\\n'
         >>> parse_id_fingerprint_pairs(output)
+        [('dd9jn@gnu.org', '6BD9 050F D8FC 941B 4341  2DCC 68B7 AB89 5754 8DCD')]
 
         >>> output = 'pub  4096R/0x07E937498DD94D6F 2014-08-12 GoodCrypto Sales <sales@goodcrypto.com>\\n      Key fingerprint = 7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F\\nsub   4096R/0x2454F32D0D358942 2014-08-12 [expires: 2015-08-12]\\n      Key fingerprint = B1FE D773 7F0C BB29 BA9F  CDD7 2454 F32D 0D35 8942'
+        >>> parse_id_fingerprint_pairs(output)
+        [('sales@goodcrypto.com', '7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F')]
+
+        >>> output = 'pub  4096R/8DD94D6F 2014-08-12 GoodCrypto Sales <sales@goodcrypto.com>\\n      Key fingerprint = 7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F\\nsig       8DD94D6F 2014-08-12   [selfsig]\\n'
         >>> parse_id_fingerprint_pairs(output)
         [('sales@goodcrypto.com', '7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F')]
 
@@ -41,7 +46,9 @@ def parse_id_fingerprint_pairs(output):
         return email
 
     ids_fingerprints = []
-    if output is not None:
+    if output is None:
+        _log.write('no output for parse_id_fingerprint_pairs')
+    else:
         # pub  1024D/0x68B7AB8957548DCD 1998-07-07 Werner Koch (gnupg sig) <dd9jn@gnu.org>
         #       Key fingerprint = 6BD9 050F D8FC 941B 4341  2DCC 68B7 AB89 5754 8DCD
         # pub  1024R/0x53B620D01CE0C630 2006-01-01 Werner Koch (dist sig) <dd9jn@gnu.org>
@@ -60,15 +67,24 @@ def parse_id_fingerprint_pairs(output):
         #       Key fingerprint = 16CC 3D3B 0238 2A7F 67B5  C211 1E0F E11D 664D 7444
         # pub  2048R/0x249B39D24F25E3B6 2011-01-12 Werner Koch (dist sig)
         #       Key fingerprint = D869 2123 C406 5DEA 5E0F  3AB5 249B 39D2 4F25 E3B6
+        # 
+        # pub  4096R/8DD94D6F 2014-08-12 GoodCrypto Sales <sales@goodcrypto.com>
+        #       Key fingerprint = 7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F
+        # sig       8DD94D6F 2014-08-12   [selfsig]
         email = fingerprint = None
         for line in output.split('\n'):
             if line.startswith(gpg_constants.PUB_PREFIX):
+                # save the previously defined email and fingerprint
+                if email and fingerprint:
+                    email = add_pair_and_reset(email, fingerprint)
+                    _log.write('saved email before new uid: {} {}'.format(email, fingerprint))
+
                 full_address = ''
                 parts = line.split(' ')
                 for part in parts[3:]:
                     full_address += part
                 if full_address:
-                    __, email = parse_address(full_address)
+                    email = get_email(full_address)
                     _log.write('pub email: {}'.format(email))
             elif line.find(gpg_constants.FINGERPRINT_PREFIX) >= 0:
                 # if an email address has been defined, then save the associated fingerprint
@@ -83,7 +99,7 @@ def parse_id_fingerprint_pairs(output):
                 # get the alternative email address
                 m = re.match('^uid\s+(.*)'.format(gpg_constants.UID_PREFIX), line.strip())
                 if m:
-                    __, email = parse_address(m.group(1))
+                    email = get_email(m.group(1))
                     # save the email address with the associated fingerprint
                     if email and fingerprint:
                         email = add_pair_and_reset(email, fingerprint)
@@ -96,6 +112,11 @@ def parse_id_fingerprint_pairs(output):
 
                 # set up for another email address
                 email = fingerprint = None
+
+        # save the previously defined email and fingerprint
+        if email and fingerprint:
+            _log.write('saving the final email: {} {}'.format(email, fingerprint))
+            email = add_pair_and_reset(email, fingerprint)
 
     if len(ids_fingerprints) <= 0:
         ids_fingerprints = None
@@ -217,7 +238,8 @@ def _parse_expiration_date(line):
                 if index > 0:
                     expiration_date = line[index + len(': '):].strip()
     except Exception:
-        _log.write(format_exc())
+        record_exception()
+        _log.write('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
     return expiration_date
 
@@ -272,7 +294,8 @@ def _parse_fingerprint(line):
                     fingerprint = suffix
     except Exception:
         _log.write('Unable to _parse: {}'.format(line))
-        _log.write(format_exc())
+        _log.write('EXCEPTION - see goodcrypto.utils.exception.log for details')
+        record_exception()
 
     return fingerprint
 

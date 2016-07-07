@@ -1,12 +1,10 @@
-#!/usr/bin/env python
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2014-09-19
+    Last modified: 2015-07-27
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
-from traceback import format_exc
-
+from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
 from goodcrypto.oce.crypto_factory import CryptoFactory
 #from syr.sync_function import synchronized
@@ -161,7 +159,8 @@ class KeyFactory(CryptoFactory):
             name = CryptoFactory.get_name(crypto)
         except Exception as exception:
             if type(exception) != AttributeError:
-                KeyFactory.log_debug(format_exc())
+                record_exception()
+                KeyFactory.log_debug('EXCEPTION - see goodcrypto.utils.exception.log for details')
             try:
                 if isinstance(crypto, str):
                     name = crypto
@@ -169,7 +168,8 @@ class KeyFactory(CryptoFactory):
                     KeyFactory.log_debug('crypto type: {}'.format(type(crypto)))
                     name = crypto.get_name()
             except Exception:
-                KeyFactory.log_debug(format_exc())
+                record_exception()
+                KeyFactory.log_debug('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
         KeyFactory.reset_key_crypto()
         KeyFactory.log_debug('got key name: {}'.format(name))

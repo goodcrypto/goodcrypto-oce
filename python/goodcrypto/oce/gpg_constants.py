@@ -1,9 +1,8 @@
-#!/usr/bin/env python
 '''
     Public constants for GNU Privacy Guard.
     
     Copyright 2014 GoodCrypto
-    Last modified: 2014-11-26
+    Last modified: 2015-08-02
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -67,6 +66,9 @@ CHARSET = '--charset'
 UTF8 = 'utf-8'
 WITH_COLONS = '--with-colons'
 
+CHECK_TRUSTDB = '--check-trustdb'
+FORCE_TRUSTDB_CHECK = '--yes'
+
 # Used to gen a key
 KEY_TYPE = 'Key-Type: '
 KEY_LENGTH = 'Key-Length: '
@@ -84,4 +86,17 @@ SUB_PREFIX = 'sub'
 SEC_PREFIX = "sec"
 UID_PREFIX = 'uid'
 FINGERPRINT_PREFIX = 'Key fingerprint = '
+
+LARGE_DATA_CHUNK = 1000000
+TIMEOUT_PER_CHUNK = 240 # in seconds
+
+BEGIN_PGP_MESSAGE = '-----BEGIN PGP MESSAGE-----'
+END_PGP_MESSAGE = '-----END PGP MESSAGE-----'
+
+BEGIN_PGP_SIGNED_MESSAGE = '-----BEGIN PGP SIGNED MESSAGE-----'
+BEGIN_PGP_SIGNATURE = '-----BEGIN PGP SIGNATURE-----'
+END_PGP_SIGNATURE = '-----END PGP SIGNATURE-----'
+
+# message to alert that key already exists
+KEY_EXISTS = 'Key already exists'
 

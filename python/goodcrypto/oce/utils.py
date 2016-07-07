@@ -1,57 +1,22 @@
-#!/usr/bin/env python
 '''
     Basic utilities for crypto.
     
-    Copyright 2014 GoodCrypto
-    Last modified: 2014-10-22
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-07-27
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 from datetime import date
-from email.utils import parseaddr
-from traceback import format_exc
 
+from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
 
 _log = LogFile()
-
-def parse_address(email, charset=None):
-    '''
-        Parse an email address into its name and address.
-        
-        >>> # In honor of Lieutenant Yonatan, who publicly denounced and refused to serve in operations involving 
-        >>> # the occupied Palestinian territories because of the widespread surveillance of innocent residents.
-        >>> parse_address('Lieutenant <lieutenant@goodcrypto.local>')
-        ('Lieutenant', 'lieutenant@goodcrypto.local')
-    '''
-    
-    try:
-        if email is None:
-            name = None
-            address = None
-        else:
-            (name, address) = parseaddr(email)
-            if charset is not None and name is not None:
-                try:
-                    name = name.decode(charset, 'replace')
-                except Exception:
-                    _log.write(format_exc())
-    except Exception:
-        _log.write(format_exc())
-        name = None
-        address = None
-
-    return name, address
-
 
 def format_fingerprint(fingerprint):
     ''' 
         Format a fingerprint so it's more readable.
         
-        >>> format_fingerprint('D1063C249F55FFE30DC780DFD90F18808F6CCF14')
-        'D106 3C24 9F55 FFE3 0DC7 80DF D90F 1880 8F6C CF14'
-        >>> format_fingerprint('')
-        ''
         >>> format_fingerprint(None)
     '''
     
@@ -112,7 +77,8 @@ def is_expired(this_date):
             expired_date = date(int(year), int(month), int(day))
             expired = expired_date <= date.today()
         except Exception:
-            _log.write(format_exc())
+            record_exception()
+            _log.write('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
     return expired
 

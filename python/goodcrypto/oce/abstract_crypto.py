@@ -1,13 +1,13 @@
-#!/usr/bin/env python
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-04-21
+    Copyright 2014-2015 GoodCrypto
+    Last modified: 2015-07-27
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 
 from abc import ABCMeta, abstractmethod
-from traceback import format_exc
+
+from goodcrypto.utils.exception import record_exception
 
 
 class AbstractCrypto(object):
@@ -243,8 +243,9 @@ class AbstractCrypto(object):
             if result_code is not None:
                 errorMsg.append('\nResult code: {}'.format(result_code))
     
-            self.log_message(format_exc())
+            record_exception()
             self.log_message(str(errorMsg))
+            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
         except Exception:
             pass
 
@@ -266,6 +267,6 @@ class AbstractCrypto(object):
         '''
 
         self.log_message('Unexpected error: {}'.format(t))
-        self.log_message(format_exc())
-
+        record_exception()
+        self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
