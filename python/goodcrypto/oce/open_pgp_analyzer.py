@@ -1,7 +1,7 @@
 #! /usr/bin/python
 '''
     Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-07-28
+    Last modified: 2015-09-17
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -43,7 +43,7 @@ class OpenPGPAnalyzer(object):
 
             >>> from goodcrypto.oce import constants as oce_constants
             >>> plugin = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
-            >>> encrypted_data = plugin.sign_encrypt_and_armor(
+            >>> encrypted_data, __ = plugin.sign_encrypt_and_armor(
             ...   oce_constants.TEST_DATA_STRING, oce_constants.EDWARD_LOCAL_USER,
             ...   oce_constants.JOSEPH_REMOTE_USER, oce_constants.EDWARD_PASSPHRASE)
             >>> analyzer = OpenPGPAnalyzer()
@@ -80,9 +80,11 @@ class OpenPGPAnalyzer(object):
 
             >>> from goodcrypto.oce.constants import EDWARD_LOCAL_USER, EDWARD_PASSPHRASE
             >>> plugin = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
-            >>> signed_data = plugin.sign('This is a test', EDWARD_LOCAL_USER, EDWARD_PASSPHRASE)
+            >>> signed_data, error_message = plugin.sign('This is a test', EDWARD_LOCAL_USER, EDWARD_PASSPHRASE)
             >>> analyzer = OpenPGPAnalyzer()
             >>> analyzer.is_signed(signed_data, crypto=plugin)
+            True
+            >>> error_message is None
             True
         '''
 

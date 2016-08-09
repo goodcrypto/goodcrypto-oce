@@ -2,7 +2,7 @@
     GPG RQ worker settings.
 
     Copyright 2014 GoodCrypto
-    Last modified: 2015-06-08
+    Last modified: 2015-09-21
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -21,8 +21,8 @@ GPG_REDIS_PORT = REDIS_PORT
 # REDIS_DB = 3
 
 # Queues to listen on
-GPG_RQUEUE = 'gpg'
-QUEUES = [GPG_RQUEUE]
+GPG_RQ = 'gpg'
+QUEUES = [GPG_RQ]
 
 # If you're using Sentry to collect your runtime exceptions, you can use this
 # to configure RQ for it in a single step

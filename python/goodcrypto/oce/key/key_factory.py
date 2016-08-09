@@ -1,13 +1,12 @@
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2015-07-27
+    Last modified: 2015-09-21
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
 from goodcrypto.oce.crypto_factory import CryptoFactory
-#from syr.sync_function import synchronized
 
 
 class KeyFactory(CryptoFactory):
@@ -95,7 +94,7 @@ class KeyFactory(CryptoFactory):
 
         KeyFactory.log_debug('getting key crypto: {}'.format(encryption_name))
         KeyFactory.setup_key_crypto()
-        
+
         # get the key plugin classname if the standard plugin classname was passed in
         if (plugin_classname is not None and
             plugin_classname.startswith(KeyFactory.CRYPTO_PLUGIN_CLASS_PREFIX) and
@@ -277,7 +276,7 @@ class KeyFactory(CryptoFactory):
         if KeyFactory.DEBUGGING:
             if KeyFactory._log is None:
                 KeyFactory._log = LogFile()
-    
+
             KeyFactory._log.write(message)
 
 

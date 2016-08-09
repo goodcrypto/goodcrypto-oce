@@ -1,8 +1,8 @@
 '''
     Public constants for GNU Privacy Guard.
-    
+
     Copyright 2014 GoodCrypto
-    Last modified: 2015-08-02
+    Last modified: 2015-10-21
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -12,17 +12,23 @@ import os
 #  Name of the plugin.
 NAME = 'goodcrypto.oce.gpg_plugin.GPGPlugin'
 
-#  Name of the GPG encryption software. 
+#  Name of the GPG encryption software.
 ENCRYPTION_NAME = "GPG"
 
-#  Directory for GPG keyrings. 
+#  Directory for GPG keyrings.
 DIR_NAME = ".gnupg"
 
-#  Filename of GPG public keyring. 
+#  Filename for GPG's configuration.
+CONF_FILENAME = 'gpg.conf'
+
+#  Filename of GPG public keyring.
 PUBLIC_KEY_FILENAME = "pubring.gpg"
 
-#  Filename of GPG secret keyring. 
+#  Filename of GPG secret keyring.
 SECRET_KEY_FILENAME = "secring.gpg"
+
+#  Filename of GPG trust database.
+TRUST_DB_FILENAME = "trustdb.gpg"
 
 # End of line
 EOL = os.linesep

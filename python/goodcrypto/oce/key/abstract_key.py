@@ -1,6 +1,6 @@
 '''
     Copyright 2014 GoodCrypto
-    Last modified: 2015-07-08
+    Last modified: 2015-09-24
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -59,7 +59,6 @@ class AbstractKey(object):
             @param  user_id                     ID for the new key. This is typically an email address.
             @param  passcode                    Passphrase
             @param  expiration                  Time until the key expires.
-            @param  wait_for_results            True if key should be created and results returned.
         '''
 
 

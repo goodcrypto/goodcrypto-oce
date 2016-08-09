@@ -1,6 +1,6 @@
 '''
     Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-07-08
+    Last modified: 2015-09-23
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -12,8 +12,8 @@ from goodcrypto.oce.abstract_crypto import AbstractCrypto
 
 
 class AbstractPlugin(AbstractCrypto):
-    ''' Pluggable crypto service superclass for the Open Crypto Engine. 
-    
+    ''' Pluggable crypto service superclass for the Open Crypto Engine.
+
         AbstractPlugin is an API for a specific implemention of a crypto algorithm.
         AbstractCrypto describes the crypto algorithm, such as PGP.
         AbstractPlugin inherits from AbstractCrypto.
@@ -29,7 +29,7 @@ class AbstractPlugin(AbstractCrypto):
 
             @return classname of plugin
         '''
-        
+
     @abstractmethod
     def get_plugin_version(self):
         '''
@@ -37,10 +37,10 @@ class AbstractPlugin(AbstractCrypto):
 
             @return plugin version
         '''
-        
+
     @abstractmethod
     def set_executable(self, pathname):
-        ''' 
+        '''
             Set executable pathname.
             This default implementation does nothing because some plugins don't have an executable.
 
@@ -49,7 +49,7 @@ class AbstractPlugin(AbstractCrypto):
 
     @abstractmethod
     def get_executable(self):
-        ''' 
+        '''
             Get executable pathname.
             This default implementation returns null.
 
@@ -59,7 +59,7 @@ class AbstractPlugin(AbstractCrypto):
 
     @abstractmethod
     def get_default_executable(self):
-        ''' 
+        '''
             Get default executable pathname.
             This default implementation returns null.
 
@@ -91,18 +91,32 @@ class AbstractPlugin(AbstractCrypto):
         '''
             Get the jobs in the queue.
         '''
-        
+
         return 0
-    
+
+    def get_job(self):
+        '''
+            Get the job from the queue if this plugin uses one.
+        '''
+
+        return None
+
+    def get_queue(self):
+        '''
+            Get the queue if this plugin uses one.
+        '''
+
+        return None
+
     def wait_until_queue_empty(self):
         '''
             Wait until the queue is empty.
         '''
 
         pass
-    
+
     def clear_failed_queue(self):
-        ''' 
+        '''
             Clear all the jobs in the failed queue.
         '''
 
