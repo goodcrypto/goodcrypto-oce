@@ -6,7 +6,7 @@
     Other code should enqueue all gpg calls to the client end of that queue.
 
     Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-11-22
+    Last modified: 2015-12-20
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -217,9 +217,13 @@ class GPGExec(object):
         # so we don't want to check on every command
         if auto_check_trustdb:
             kwargs['auto_check_trustdb'] = True
+            self.log_message('auto_check_trustdb')
         else:
             kwargs['no_auto_check_trustdb'] = True
-            kwargs['always_trust'] = True
+            self.log_message('no_auto_check_trustdb')
+            if (self.gpg_home is not None and
+                os.path.exists(os.path.join(self.gpg_home, gpg_constants.TRUST_DB_FILENAME))):
+                kwargs['always_trust'] = True
         self.gpg = sh.gpg.bake(**kwargs)
 
         # make sure no old job has left locked files

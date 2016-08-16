@@ -1,6 +1,6 @@
 '''
     Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-09-23
+    Last modified: 2015-12-19
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -246,9 +246,9 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             True
             >>> plugin.delete(None)
             False
+            >>> from shutil import rmtree
+            >>> rmtree('/var/local/projects/goodcrypto/server/data/test_oce')
         '''
-        #    >>> from shutil import rmtree
-        #    >>> rmtree('/var/local/projects/goodcrypto/server/data/test_oce')
 
         result_ok = True
         try:

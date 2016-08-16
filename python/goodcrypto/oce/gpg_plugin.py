@@ -1,6 +1,6 @@
 '''
     Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-11-22
+    Last modified: 2015-12-19
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
