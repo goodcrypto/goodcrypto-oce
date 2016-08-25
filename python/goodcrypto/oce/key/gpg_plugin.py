@@ -1,6 +1,6 @@
 '''
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-12-19
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-01-17
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -601,7 +601,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
                     # verify the passphrase is correct
                     signed_data, error_message = self.sign('Test data', user_id, passcode)
-                    if signed_data and signed_data.find('-----BEGIN PGP SIGNED MESSAGE-----') >= 0:
+                    if signed_data and signed_data.find(gpg_constants.BEGIN_PGP_SIGNED_MESSAGE) >= 0:
                         valid = True
                     elif error_message is not None:
                         self.log_message(error_message)
