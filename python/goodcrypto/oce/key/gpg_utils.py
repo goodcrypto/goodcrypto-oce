@@ -1,11 +1,10 @@
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-07-27
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-02-17
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import re
-from datetime import date
 
 from goodcrypto.oce import gpg_constants
 from goodcrypto.oce.key.constants import EXPIRES_IN, EXPIRATION_UNIT
@@ -20,34 +19,23 @@ _log = LogFile()
 def parse_id_fingerprint_pairs(output):
     '''
         Parse the output for the user ids and fingerprints.
-        
-        >>> output = 'pub  1024D/0x68B7AB8957548DCD 1998-07-07 Werner Koch (gnupg sig) <dd9jn@gnu.org>\\n      Key fingerprint = 6BD9 050F D8FC 941B 4341  2DCC 68B7 AB89 5754 8DCD\\n'
-        >>> parse_id_fingerprint_pairs(output)
-        [('dd9jn@gnu.org', '6BD9 050F D8FC 941B 4341  2DCC 68B7 AB89 5754 8DCD')]
 
-        >>> output = 'pub  4096R/0x07E937498DD94D6F 2014-08-12 GoodCrypto Sales <sales@goodcrypto.com>\\n      Key fingerprint = 7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F\\nsub   4096R/0x2454F32D0D358942 2014-08-12 [expires: 2015-08-12]\\n      Key fingerprint = B1FE D773 7F0C BB29 BA9F  CDD7 2454 F32D 0D35 8942'
-        >>> parse_id_fingerprint_pairs(output)
-        [('sales@goodcrypto.com', '7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F')]
-
-        >>> output = 'pub  4096R/8DD94D6F 2014-08-12 GoodCrypto Sales <sales@goodcrypto.com>\\n      Key fingerprint = 7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F\\nsig       8DD94D6F 2014-08-12   [selfsig]\\n'
-        >>> parse_id_fingerprint_pairs(output)
-        [('sales@goodcrypto.com', '7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F')]
-
+        Test extreme case.
         >>> parse_id_fingerprint_pairs(None)
     '''
 
     def add_pair_and_reset(email, fingerprint):
         ''' Add the id and fingerprint pair to the list. '''
         ids_fingerprints.append((email, fingerprint))
-        
+
         # reset the info
         email = fingerprint = None
-        
+
         return email
 
     ids_fingerprints = []
     if output is None:
-        _log.write('no output for parse_id_fingerprint_pairs')
+        log_message('no output for parse_id_fingerprint_pairs')
     else:
         # pub  1024D/0x68B7AB8957548DCD 1998-07-07 Werner Koch (gnupg sig) <dd9jn@gnu.org>
         #       Key fingerprint = 6BD9 050F D8FC 941B 4341  2DCC 68B7 AB89 5754 8DCD
@@ -67,7 +55,7 @@ def parse_id_fingerprint_pairs(output):
         #       Key fingerprint = 16CC 3D3B 0238 2A7F 67B5  C211 1E0F E11D 664D 7444
         # pub  2048R/0x249B39D24F25E3B6 2011-01-12 Werner Koch (dist sig)
         #       Key fingerprint = D869 2123 C406 5DEA 5E0F  3AB5 249B 39D2 4F25 E3B6
-        # 
+        #
         # pub  4096R/8DD94D6F 2014-08-12 GoodCrypto Sales <sales@goodcrypto.com>
         #       Key fingerprint = 7B68 BCA9 6AC8 1F28 4DCE  B651 07E9 3749 8DD9 4D6F
         # sig       8DD94D6F 2014-08-12   [selfsig]
@@ -77,7 +65,7 @@ def parse_id_fingerprint_pairs(output):
                 # save the previously defined email and fingerprint
                 if email and fingerprint:
                     email = add_pair_and_reset(email, fingerprint)
-                    _log.write('saved email before new uid: {} {}'.format(email, fingerprint))
+                    log_message('saved email before new uid: {} {}'.format(email, fingerprint))
 
                 full_address = ''
                 parts = line.split(' ')
@@ -85,17 +73,17 @@ def parse_id_fingerprint_pairs(output):
                     full_address += part
                 if full_address:
                     email = get_email(full_address)
-                    _log.write('pub email: {}'.format(email))
+                    log_message('pub email: {}'.format(email))
             elif line.find(gpg_constants.FINGERPRINT_PREFIX) >= 0:
                 # if an email address has been defined, then save the associated fingerprint
                 if email:
                     fingerprint = line.strip()[len(gpg_constants.FINGERPRINT_PREFIX):]
-                    _log.write('fingerprint: {}'.format(fingerprint))
+                    log_message('fingerprint: {}'.format(fingerprint))
             elif line.startswith(gpg_constants.UID_PREFIX):
                 # save the previously defined email and fingerprint
                 if email and fingerprint:
                     email = add_pair_and_reset(email, fingerprint)
-                    _log.write('saved email before new uid: {} {}'.format(email, fingerprint))
+                    log_message('saved email before new uid: {} {}'.format(email, fingerprint))
                 # get the alternative email address
                 m = re.match('^uid\s+(.*)'.format(gpg_constants.UID_PREFIX), line.strip())
                 if m:
@@ -103,60 +91,110 @@ def parse_id_fingerprint_pairs(output):
                     # save the email address with the associated fingerprint
                     if email and fingerprint:
                         email = add_pair_and_reset(email, fingerprint)
-                        _log.write('saved uid email: {} {}'.format(email, fingerprint))
+                        log_message('saved uid email: {} {}'.format(email, fingerprint))
             elif line.startswith(gpg_constants.SUB_PREFIX):
                 # save any unsaved email and fingerprint
                 if email and fingerprint:
                     email = add_pair_and_reset(email, fingerprint)
-                    _log.write('saved email after finding sub: {} {}'.format(email, fingerprint))
+                    log_message('saved email after finding sub: {} {}'.format(email, fingerprint))
 
                 # set up for another email address
                 email = fingerprint = None
 
         # save the previously defined email and fingerprint
         if email and fingerprint:
-            _log.write('saving the final email: {} {}'.format(email, fingerprint))
+            log_message('saving the final email: {} {}'.format(email, fingerprint))
             email = add_pair_and_reset(email, fingerprint)
 
     if len(ids_fingerprints) <= 0:
         ids_fingerprints = None
-    _log.write('ids and fingerprints: {}'.format(ids_fingerprints))
-                
+    log_message('ids and fingerprints: {}'.format(ids_fingerprints))
+
     return ids_fingerprints
-    
+
+def parse_ids_matching_key_id(key_id, output):
+    '''
+        Parse the output for the user ids that match the key id.
+
+        Test extreme case.
+        >>> parse_ids_matching_key_id(None, None)
+        []
+    '''
+
+    ids = []
+    if output is None:
+        log_message('no output for parse_ids_matching_key_id')
+    elif key_id is None:
+        log_message('no key_id to match in parse_ids_matching_key_id')
+    else:
+        # pub   4096R/0x2F102CC762C50CF8 2016-02-10 [expires: 2018-02-09]
+        #       Key fingerprint = 4D58 DCB4 8F6B B667 37B0  0D58 2F10 2CC7 62C5 0CF8
+        # uid                 [ultimate] Edward <edward@goodcrypto.local>
+        # sub   4096R/0x5BE87B140D55FC08 2016-02-10 [expires: 2018-02-09]
+        #       Key fingerprint = 4241 0612 77EF 1887 1149  6E67 5BE8 7B14 0D55 FC08
+        #
+        # pub   4096R/0x855978CF296DE1CD 2016-02-10 [expires: 2018-02-09]
+        #       Key fingerprint = 99C4 402C AE6F 09DB 604D  4A8A 8559 78CF 296D E1CD
+        # uid                 [ultimate] Chelsea <chelsea@goodcrypto.local>
+        # sub   4096R/0xC9280ACCE461488E 2016-02-10 [expires: 2018-02-09]
+        #       Key fingerprint = A63C 464A 8C0E 7074 FE59  DEE2 C928 0ACC E461 488E
+        #
+        # pub   2048D/0xF2AD85AC1E42B367 2007-12-31 [expires: 2018-12-31]
+        #       Key fingerprint = 8061 5870 F5BA D690 3336  86D0 F2AD 85AC 1E42 B367
+        # uid                 [ unknown] Werner Koch <wk@gnupg.org>
+        # uid                 [ unknown] Werner Koch <wk@g10code.com>
+        # uid                 [ unknown] Werner Koch <werner@eifzilla.de>
+        # sub   2048R/0x1E0FE11D664D7444 2014-01-02 [expires: 2016-12-31]
+        # sub   1024D/0x4F0540D577F95F95 2011-11-02
+
+        found = False
+        stashed_lines = []
+        stripped_key_id = strip_fingerprint(key_id)
+        for line in output.split('\n'):
+            stashed_lines.append(line)
+            if found:
+                if len(line.strip()) <= 0:
+                    for stashed_line in stashed_lines:
+                        m = re.match('^uid\s+\[(.*)\]\s+(.*)', stashed_line)
+                        if m:
+                            # skip expired keys
+                            if m.group(1) == 'expired':
+                                pass
+                            else:
+                                ids.append(m.group(2))
+                    break
+            else:
+                # reset the stashed lines everytime there's a blank line
+                if len(line.strip()) <= 0:
+                    stashed_lines = []
+                else:
+                    m = re.match('^\s+Key fingerprint = (.*)', line)
+                    if m:
+                        stripped_fingerprint = strip_fingerprint(m.group(1))
+                        if (stripped_key_id == stripped_fingerprint or
+                            stripped_fingerprint.endswith(stripped_key_id)):
+                            found = True
+
+        log_message('ids matching {}: {}'.format(key_id, ids))
+
+    return ids
+
 def get_standardized_expiration(expiration):
     '''
         Change the expiration dictionary into its 2 components: number of units and units.
-        
+
         If the expiration is None, then use the default that the key never expires.
-        Adjust any errors in formatting (e.g., units should be '' for days, 
+        Adjust any errors in formatting (e.g., units should be '' for days,
         'w' for weeks, 'm' for months, and 'y' for years.
-        
+
+        Test extreme case.
         >>> get_standardized_expiration(None)
         (0, '')
-        
-        >>> get_standardized_expiration({EXPIRES_IN: 1, EXPIRATION_UNIT: 'y',})
-        (1, 'y')
-        
-        >>> get_standardized_expiration({EXPIRES_IN: 5, EXPIRATION_UNIT: 'd',})
-        (5, '')
-        
-        >>> get_standardized_expiration({EXPIRES_IN: 99,})
-        (99, 'y')
-
-        >>> get_standardized_expiration({EXPIRATION_UNIT: 'd',})
-        (0, '')
-        
-        >>> get_standardized_expiration({EXPIRES_IN: 2, EXPIRATION_UNIT: 'weeks',})
-        (2, 'w')
-        
-        >>> get_standardized_expiration({EXPIRES_IN: 10, EXPIRATION_UNIT: 'j',})
-        (10, 'y')
     '''
 
     expires_in = None
     expiration_unit = None
-    
+
     if expiration is not None:
         if expiration.has_key(EXPIRES_IN):
             expires_in = expiration[EXPIRES_IN]
@@ -186,12 +224,8 @@ def get_standardized_expiration(expiration):
 def parse_fingerprint_and_expiration(output):
     '''
         Parse the output for the fingerprint and the expiration date.
-        
-        >>> # In honor of Tim Hudson, who co-developed the SSLeay library that OpenSSL is based.
-        >>> output = 'pub   4096R/CC95031C 2014-06-14\\nKey fingerprint = 69F9 99F3 6802 4CDD FEBD  266E 95B7 2664 CC95 031C\\nuid                  Tim <Tim@goodcrypto.local>\\nsub   4096R/156739BF 2014-06-14        '
-        >>> parse_fingerprint_and_expiration(output)
-        ('69F999F368024CDDFEBD266E95B72664CC95031C', None)
 
+        Test extreme case.
         >>> parse_fingerprint_and_expiration(None)
         (None, None)
     '''
@@ -206,18 +240,15 @@ def parse_fingerprint_and_expiration(output):
                 break
 
         fingerprint = strip_fingerprint(fingerprint)
-                
+
     return fingerprint, expiration_date
-    
+
 def _parse_expiration_date(line):
     '''
         Parse the expiration date, if there is one, from the line.
 
-        >>> _parse_expiration_date('pub   4096R/8FD9B90B 2013-11-19 [expires: 2014-11-19]')
-        '2014-11-19'
-        >>> _parse_expiration_date('pub   4096R/8FD9B90B 2013-11-19') is None
-        True
-        >>> _parse_expiration_date('Key fingerprint = 12345678') is None
+        Test extreme case.
+        >>> _parse_expiration_date(None) is None
         True
     '''
 
@@ -227,7 +258,7 @@ def _parse_expiration_date(line):
 
     expiration_date = None
     try:
-        if line:
+        if line is not None:
             if line.startswith(PUB_LINE) and line.find(EXPIRES_START) > 0:
                 index = line.find(EXPIRES_START) + len(EXPIRES_START)
                 line = line[index:]
@@ -239,7 +270,7 @@ def _parse_expiration_date(line):
                     expiration_date = line[index + len(': '):].strip()
     except Exception:
         record_exception()
-        _log.write('EXCEPTION - see goodcrypto.utils.exception.log for details')
+        log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
 
     return expiration_date
 
@@ -247,23 +278,8 @@ def _parse_fingerprint(line):
     '''
         Parse the fingerprint from the line.
 
-        >>> _parse_fingerprint('Key fingerprint =12345678') == '12345678'
-        True
-        >>> _parse_fingerprint('The GPG Key fingerprint =12345678') == '12345678'
-        True
-        >>> _parse_fingerprint('Key fingerprint = 12345678') == '12345678'
-        True
-        >>> _parse_fingerprint('key Fingerprint =12345678') == '12345678'
-        True
-        >>> _parse_fingerprint('Schl.-Fingerabdruck =12345678') == '12345678'
-        True
-        >>> _parse_fingerprint('schl.-fingerabdruck =12345678') == '12345678'
-        True
-        >>> _parse_fingerprint('schl.-fingerabdruck =') == None
-        True
-        >>> _parse_fingerprint('123456789') == None
-        True
-        >>> _parse_fingerprint(123) == None
+        Test extreme case.
+        >>> _parse_fingerprint(None) == None
         True
     '''
 
@@ -286,16 +302,38 @@ def _parse_fingerprint(line):
             if index < 0:
                 prefix = FINGERPRINT_PREFIX4
                 index = line.lower().find(FINGERPRINT_PREFIX4)
-    
+
             if index >= 0:
                 offset = index + len(prefix)
                 suffix = line[offset:].strip()
                 if len(suffix) > 0:
                     fingerprint = suffix
+        else:
+            log_message('trying to parse {}'.format(type(line)))
     except Exception:
-        _log.write('Unable to _parse: {}'.format(line))
-        _log.write('EXCEPTION - see goodcrypto.utils.exception.log for details')
+        log_message('Unable to _parse: {}'.format(line))
+        log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
         record_exception()
 
     return fingerprint
+
+
+def log_message(message):
+    '''
+        Log the message to the local log.
+
+        >>> import os.path
+        >>> from syr.log import BASE_LOG_DIR
+        >>> from syr.user import whoami
+        >>> log_message('test')
+        >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.key.gpg_utils.log'))
+        True
+    '''
+
+    global _log
+
+    if _log is None:
+        _log = LogFile()
+
+    _log.write_and_flush(message)
 

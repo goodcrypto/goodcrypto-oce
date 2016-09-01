@@ -1,6 +1,6 @@
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-09-24
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-02-16
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -154,6 +154,14 @@ class AbstractKey(object):
         '''
 
     @abstractmethod
+    def get_user_ids_from_fingerprint(self):
+        '''
+            Returns a list of user ids associated with the fingerprint.
+
+            @return                                              List of user ids.
+        '''
+
+    @abstractmethod
     def get_id_fingerprint_pairs(self, key_block):
         '''
             Returns a key's user id, fingerprint and the expiration date.
@@ -166,4 +174,57 @@ class AbstractKey(object):
     def fingerprint_expired(self, expiration):
         ''' Determine if the expiration, if there is one, is older than tomorrow. '''
 
+
+    @abstractmethod
+    def search_for_key(self, user_id, keyserver):
+        '''
+            Returns a key's ID if found. If not returns the error message from attempt.
+
+            @param  user_id                                       ID for the key. This is typically an email address.
+            @param  keyserver                                     The keyserver to search.
+            @return                                              Key ID if found; otherwise, error message from attempt.
+        '''
+
+    @abstractmethod
+    def retrieve_key(self, key_id, keyserver):
+        '''
+            Returns ok if key retrieved successfully.
+
+            @param  key_id                                        ID for the key.
+            @param  keyserver                                    The keyserver to use to get key.
+            @return                                              OK if successful.
+        '''
+
+    @abstractmethod
+    def parse_keyserver_search(self, output):
+        '''
+            Parse the output of a keyserver search.
+
+            @return                 Fingerprint.
+        '''
+
+    @abstractmethod
+    def parse_keyserver_search_error(self, output, error):
+        '''
+            Returns an error message after failing to get a key.
+
+            @return                 Error message about failure or none if failure due to key not found.
+        '''
+
+    @abstractmethod
+    def get_background_job_results(self, email, key_job, good_result):
+        '''
+            Returns ok if successful.
+
+            @param  email                                        The email address associated with the job.
+            @param  key_job                                      The job number of the background task.
+            @param  good_result                                  The result code if successful.
+            @return                                              OK if successful, timed_out, output, error
+        '''
+
+    @abstractmethod
+    def get_good_search_result(self):
+        '''
+            Returns the result code of a successful search.
+        '''
 

@@ -1,6 +1,6 @@
 '''
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-12-19
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-02-18
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -880,9 +880,6 @@ class GPGPlugin(AbstractPlugin):
                 if statinfo.st_uid == os.geteuid():
                     os.mkdir(self.gpg_home, 0700)
                     self.log_message('created home dir: {}'.format(self.gpg_home))
-                    #self._create_basic_key_files()
-                else:
-                    self.log_message('unable to create home dir as {}: {}'.format(os.geteuid(), self.gpg_home))
         except OSError:
             record_exception()
             self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
@@ -1076,6 +1073,27 @@ class GPGPlugin(AbstractPlugin):
                 result_code = gpg_constants.ERROR_RESULT
 
         return result_code, gpg_output, gpg_error
+
+    def get_good_result(self):
+        '''
+            Get the return code if a good result
+        '''
+
+        return gpg_constants.GOOD_RESULT
+
+    def get_error_result(self):
+        '''
+            Get the return code if an error
+        '''
+
+        return gpg_constants.ERROR_RESULT
+
+    def get_timedout_result(self):
+        '''
+            Get the return code if a call timed out
+        '''
+
+        return gpg_constants.TIMED_OUT_RESULT
 
     def log_data(self, data, message="data"):
         ''' Log data. '''

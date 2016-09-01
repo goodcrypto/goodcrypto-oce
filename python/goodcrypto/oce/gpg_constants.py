@@ -1,8 +1,8 @@
 '''
     Public constants for GNU Privacy Guard.
 
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-10-21
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-02-08
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -74,6 +74,10 @@ WITH_COLONS = '--with-colons'
 
 CHECK_TRUSTDB = '--check-trustdb'
 FORCE_TRUSTDB_CHECK = '--yes'
+
+KEYSERVER_NAME = '--keyserver'
+SEARCH_KEYSERVER = '--search-key'
+RETRIEVE_KEYS = '--recv-keys'
 
 # Used to gen a key
 KEY_TYPE = 'Key-Type: '

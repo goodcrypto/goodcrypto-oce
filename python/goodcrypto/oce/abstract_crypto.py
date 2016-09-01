@@ -1,6 +1,6 @@
 '''
     Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-07-27
+    Last modified: 2016-02-13
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -13,14 +13,14 @@ from goodcrypto.utils.exception import record_exception
 class AbstractCrypto(object):
     """
         Cryptographic service provided by the Open Crypto Engine.
-        
+
         AbstractCrypto is the superclass for one or more AbstractPlugins.
         AbstractCrypto describes the crypto algorithm, such as PGP.
         AbstractPlugin is an API for a specific implemention of the algorithm,
         such as the GPG program.
-        
+
         To avoid race conditions operations we use queues.
-        
+
         We would prefer to set the passphrase once because
         different cryptos need it at different times, and
         because sending it more often than needed would be
@@ -28,10 +28,10 @@ class AbstractCrypto(object):
         only one active instance of each OCE service, then
         one process' encrypt() could end up using another
         process' passphrase.
-        
+
         Colin Percival recommends (as of mid-June 2014):
          * verify authenticity of encrypted data before decrypting it
-         * generate a random key and apply symmetric encryption to your message, then apply 
+         * generate a random key and apply symmetric encryption to your message, then apply
            asymmetric encryption to your symmetric encryption key.
          * be especially careful to avoid timing side channels in RSAES-OAEP
          * do not use same RSA key for encryption and authentication
@@ -39,7 +39,7 @@ class AbstractCrypto(object):
          * use a key derivation function to convert passwords into keys as soon as possible; use
            PBKDF2 if you want to be buzzword-compliant; use scrypt if you want to be approximately
            2 to the 8th times more secure against serious attackers.
- 
+
          * hashing:
            * good: SHA-256; (consider SHA-3 in the future, if validated)
            * bad: MD2, MD4, MD5, SHA-1, RIPEMD
@@ -57,12 +57,12 @@ class AbstractCrypto(object):
            * bad: PKCS v1.5 padding, RSA without message padding
            * probably avoid: DSA, Elliptic Curve signature schemes
          * asymmetric encryption:
-           * good: RSAES-OAEP (RSA encryption with Optimal Asymmetric Encryption Padding), 2048-bit RSA key, 
+           * good: RSAES-OAEP (RSA encryption with Optimal Asymmetric Encryption Padding), 2048-bit RSA key,
                    a public exponent of 65537, SHA256, and MGF1-SHA256
            * bad: PKCS v1.5 padding, RSA without message padding
          * passwords:
            * good: PBKDF2
-           * bad: store passwords on server, even if encrypted; in the case of gpg, goodcrypto is the 
+           * bad: store passwords on server, even if encrypted; in the case of gpg, goodcrypto is the
              'user' and the gpg database is stored on the same server as the server with the passphrases
          * tls/ssl
             * TLS/SSL is a horrible system.
@@ -90,7 +90,7 @@ class AbstractCrypto(object):
 
             @return name of the crypto
         '''
-        
+
     @abstractmethod
     def get_crypto_version(self):
         '''
@@ -98,7 +98,7 @@ class AbstractCrypto(object):
 
             @return Crypto version
         '''
-        
+
     @abstractmethod
     def is_available(self):
         '''
@@ -106,21 +106,21 @@ class AbstractCrypto(object):
 
             @return                      true if backend app is installed.
         '''
-        
+
     @abstractmethod
     def get_user_ids(self):
         '''
             Get list of user IDs with a public key.
-            
+
             Some crypto engines require an exact match to an existing user ID, no matter
             what their docs say.
         '''
-        
+
     @abstractmethod
     def get_private_user_ids(self):
-        ''' 
+        '''
             Get list of user IDs with a private key.
-    
+
             @return            List of user IDs with a private key
         '''
 
@@ -128,19 +128,19 @@ class AbstractCrypto(object):
     def encrypt_and_armor(self, data, toUserID, charset=None):
         '''
             Encrypt and then armor with the public key indicated by toUserID.
-            
+
             @param data Data to encrypt
             @param toUserID ID indicating which public key to use. This is typically an email address.
 
             @return Encrypted data
         '''
-        
+
     @abstractmethod
     def sign_and_encrypt(self, data, fromUserID, toUserID, passphrase, clear_sign=False, charset=None):
         '''
             Sign data with the secret key indicated by fromUserID, then encrypt with
             the public key indicated by toUserID.
-            
+
             To avoid a security bug in OpenPGP we must sign before encrypting.
 
             @param data Data to encrypt
@@ -150,7 +150,7 @@ class AbstractCrypto(object):
 
             @return Encrypted data
         '''
-        
+
     @abstractmethod
     def sign_encrypt_and_armor(self, data, fromUserID, toUserID, passphrase, clear_sign=False, charset=None):
         '''
@@ -166,7 +166,7 @@ class AbstractCrypto(object):
 
             @return Encrypted data
         '''
-        
+
     @abstractmethod
     def decrypt(self, data, passphrase):
         '''
@@ -177,7 +177,7 @@ class AbstractCrypto(object):
 
             @return Decrypted data
         '''
-        
+
     @abstractmethod
     def sign(self, data, userID, passphrase):
         '''
@@ -189,7 +189,7 @@ class AbstractCrypto(object):
 
             @return Signed data
         '''
-        
+
     @abstractmethod
     def verify(self, data, userID):
         '''
@@ -200,7 +200,7 @@ class AbstractCrypto(object):
             @param userID user ID
             @param data Data to verify
         '''
-        
+
     @abstractmethod
     def get_signer(self, data):
         '''
@@ -210,16 +210,34 @@ class AbstractCrypto(object):
 
             @return ID of the apparent signer, or null if none.
         '''
-        
+
+    @abstractmethod
+    def get_good_result(self):
+        '''
+            Get the return code if a good result
+        '''
+
+    @abstractmethod
+    def get_error_result(self):
+        '''
+            Get the return code if an error
+        '''
+
+    @abstractmethod
+    def get_timedout_result(self):
+        '''
+            Get the return code if a call timed out
+        '''
+
     @abstractmethod
     def log_message(self, message):
-        ''' Log a message. '''      
+        ''' Log a message. '''
 
     def log_data(self, data, message="data"):
         ''' Log data. '''
 
         self.log_message("{} {}:\n".format(message, data))
-    	    
+
     #@synchronized
     def log_error(self, message, result_code=None):
         '''
@@ -242,7 +260,7 @@ class AbstractCrypto(object):
 
             if result_code is not None:
                 errorMsg.append('\nResult code: {}'.format(result_code))
-    
+
             record_exception()
             self.log_message(str(errorMsg))
             self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
@@ -250,13 +268,13 @@ class AbstractCrypto(object):
             pass
 
     def handle_unexpected_exception(self, t):
-        ''' 
+        '''
             Handle any unexpected exception.
-            
+
             Conventional wisdom says that in a crypto program unexpected exceptions
             should terminate the program. That doesn't work in the real world.
             Users are extremely intolerant of program crashes, and should be.
-            We log the exception and the higher level should return empty data 
+            We log the exception and the higher level should return empty data
             so caller knows there was a problem.
 
             >>> from goodcrypto.oce.crypto_factory import CryptoFactory

@@ -1,11 +1,12 @@
 '''
     Copyright 2014-2016 GoodCrypto
-    Last modified: 2016-01-17
+    Last modified: 2016-02-19
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import os, re, shutil
 from base64 import b64decode
+from datetime import date, timedelta
 from tempfile import mkdtemp
 from time import sleep
 
@@ -13,8 +14,8 @@ from goodcrypto.oce import gpg_constants
 from goodcrypto.oce.gpg_plugin import GPGPlugin as GPGCryptoPlugin
 from goodcrypto.oce.key import gpg_utils
 from goodcrypto.oce.key.abstract_key import AbstractKey
-from goodcrypto.oce.key.gpg_constants import NAME
-from goodcrypto.oce.utils import is_expired
+from goodcrypto.oce.key import gpg_constants as gpg_key_constants
+from goodcrypto.oce.utils import is_expired, strip_fingerprint
 from goodcrypto.utils import parse_address, get_email
 from goodcrypto.utils.exception import record_exception
 
@@ -41,7 +42,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Creates a new GPGPlugin object.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin != None
             True
         '''
@@ -55,12 +56,12 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Get the plugin's name.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.get_plugin_name() == 'goodcrypto.oce.key.gpg_plugin.GPGPlugin'
             True
         '''
 
-        return NAME
+        return gpg_key_constants.NAME
 
 
     #@synchronized
@@ -69,7 +70,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Get the version of this plugin's implementation.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> version = plugin.get_plugin_version()
             >>> version is not None
             True
@@ -86,7 +87,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> from goodcrypto.oce.key.constants import CREATE_FUNCTION
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.is_function_supported(CREATE_FUNCTION)
             True
             >>> plugin.is_function_supported('non_existant_function')
@@ -113,7 +114,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> # In honor of Moritz Bartl, advocate for the Tor project.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.create('moritz@goodcrypto.local', 'a secret code')
             (True, False, False)
 
@@ -121,7 +122,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> from goodcrypto.oce.key.constants import EXPIRES_IN, EXPIRATION_UNIT
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> email = 'roger@goodcrypto.local'
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.create(email, 'a secret code')
             (True, False, False)
             >>> plugin.create(email, 'another code', wait_for_results=True)
@@ -135,7 +136,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
         '''
 
         result_code = gpg_constants.ERROR_RESULT
-        timed_out = key_already_exists = False
+        result_ok = timed_out = key_already_exists = False
         try:
             self.log_message('gen key for {} that expires within {}'.format(user_id, expiration))
 
@@ -179,54 +180,17 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
                 if gpg_output: self.log_message(gpg_output)
                 if gpg_error: self.log_message(gpg_error)
 
+            result_ok = result_code == gpg_constants.GOOD_RESULT
+            self.log_message('result ok: {}'.format(result_ok))
+            timed_out = result_code == gpg_constants.TIMED_OUT_RESULT
+            self.log_message('timedout: {}'.format(timed_out))
+
         except Exception as exception:
             self.handle_unexpected_exception(exception)
         finally:
             self.log_message('finished starting to gen key for {}'.format(user_id))
 
-        result_ok = result_code == gpg_constants.GOOD_RESULT
-        self.log_message('result ok: {}'.format(result_ok))
-        timed_out = result_code == gpg_constants.TIMED_OUT_RESULT
-        self.log_message('timedout: {}'.format(timed_out))
-
         return result_ok, timed_out, key_already_exists
-
-    def get_create_results(self, email, create_key_job):
-        '''
-            Get the results from the gen-key if not waiting for results.
-            This allows another function to run after the gen-key finishes
-            without waiting, but instead using RQ's depends_on function.
-        '''
-        result_code = gpg_constants.ERROR_RESULT
-        timed_out = False
-        try:
-            result_code, gpg_output, gpg_error = create_key_job.result
-            self.log_message('getting gen-key result code for job {}: {}'.format(
-                create_key_job.get_id(), result_code))
-
-            if gpg_output is not None: gpg_output = b64decode(gpg_output)
-            if gpg_error is not None: gpg_error = b64decode(gpg_error)
-
-            if result_code == gpg_constants.GOOD_RESULT:
-                if self.DEBUGGING:
-                    if gpg_output: self.log_message(gpg_output)
-                    if gpg_error: self.log_message(gpg_error)
-            else:
-                self.log_message('error while creating key for {} <{}>: {} result code'.format(name, email, result_code))
-                if gpg_output: self.log_message(gpg_output)
-                if gpg_error: self.log_message(gpg_error)
-
-        except Exception as exception:
-            self.handle_unexpected_exception(exception)
-        finally:
-            self.log_message('finished starting to gen key for {}'.format(email))
-
-        result_ok = result_code == gpg_constants.GOOD_RESULT
-        self.log_message('result ok: {}'.format(result_ok))
-        timed_out = result_code == gpg_constants.TIMED_OUT_RESULT
-        self.log_message('timedout: {}'.format(timed_out))
-
-        return result_ok, timed_out
 
     def delete(self, user_id):
         '''
@@ -234,7 +198,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> # In honor of Caspar Bowden, advocate for Tor in Europe.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> ok, __, __ = plugin.create('caspar@goodcrypto.local', 'test passphrase', wait_for_results=True)
@@ -290,7 +254,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> # In honor of Griffin Boyce, a developer for browser extensions to let
             >>> # people volunteer to become a Flash Proxy for censored users.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> ok, __, __ = plugin.create('griffin@goodcrypto.local', 'test passphrase', wait_for_results=True)
@@ -341,7 +305,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/joseph@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
-            ...    plugin = KeyFactory.get_crypto(NAME)
+            ...    plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             ...    plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             ...    plugin.import_public(data)
             ...    len(plugin.export_public('joseph@goodcrypto.remote')) > 0
@@ -349,7 +313,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             True
             True
 
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> plugin.export_public('unknown@goodcrypto.remote')
@@ -394,12 +358,12 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/laura@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
-            ...    plugin = KeyFactory.get_crypto(NAME)
+            ...    plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             ...    plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             ...    plugin.import_public(data)
             True
             True
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> plugin.import_public(None)
@@ -462,14 +426,14 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/laura@goodcrypto.remote.gpg.pub'
             >>> with open(filename) as f:
             ...    data = f.read()
-            ...    plugin = KeyFactory.get_crypto(NAME)
+            ...    plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             ...    plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             ...    plugin.import_temporarily(data)
             True
             True
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> plugin.import_temporarily(None)
@@ -506,7 +470,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Get the user ids from a public key block.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> dirname = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys'
             >>> filename = '{}/laura@goodcrypto.remote.gpg.pub'.format(dirname)
             >>> with open(filename) as f:
@@ -540,7 +504,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> # In honor of Colin Childs, translation coordinator and end user support for Tor project.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> ok, __, __ = plugin.create('colin@goodcrypto.local', 'test passphrase', wait_for_results=True)
@@ -570,7 +534,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
             >>> # In honor of Erinn Clark, developer of installer for Tor project.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
             True
             >>> ok, __, __ = plugin.create('erinn@goodcrypto.local', 'test passphrase', wait_for_results=True)
@@ -623,7 +587,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             whether the private key has expired or not.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir(plugin.GPG_HOME_DIR)
             True
             >>> plugin.private_key_exists('edward@goodcrypto.local')
@@ -636,7 +600,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
         if user_id is None:
             key_exists = False
-            self.log_message('missing user id ({})'.format(user_id))
+            self.log_message('missing user id so unable to see if private key exists')
 
         else:
             try:
@@ -658,7 +622,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             whether the public key has expired or not.
 
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.set_home_dir(plugin.GPG_HOME_DIR)
             True
             >>> plugin.public_key_exists('edward@goodcrypto.local')
@@ -695,7 +659,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             args = [gpg_constants.CHECK_TRUSTDB, gpg_constants.FORCE_TRUSTDB_CHECK]
             result_code, gpg_output, gpg_error= self.gpg_command(args)
 
-            if result_code == gpg_constants.GOOD_RESULT:
+            if result_code == gpg_constants.GOOD_RESULT or result_code == gpg_constants.CONDITIONAL_RESULT:
                 self.log_message('trustdb checked')
 
             elif result_code == gpg_constants.TIMED_OUT_RESULT:
@@ -715,34 +679,13 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
         '''
             Returns a key's fingerprint and expiration.
 
-            >>> # In honor of Karsten Loesing, primary researcher and developer into anonymous metrics.
-            >>> from goodcrypto.oce import constants as oce_constants
+            Test extreme case
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
-            >>> plugin.set_home_dir('/var/local/projects/goodcrypto/server/data/test_oce/.gnupg')
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.set_home_dir(plugin.GPG_HOME_DIR)
             True
-            >>> ok, __, __ = plugin.create('Karsten <karsten@goodcrypto.local>', 'passcode', wait_for_results=True)
-            >>> ok
-            True
-            >>> fingerprint, expired = plugin.get_fingerprint('karsten@goodcrypto.local')
-            >>> fingerprint is not None
-            True
-            >>> expired is None
-            True
-            >>> fingerprint, expired = plugin.get_fingerprint('"Karsten" <karsten@goodcrypto.local>')
-            >>> fingerprint is not None
-            True
-            >>> expired is None
-            True
-            >>> fingerprint, expired = plugin.get_fingerprint('karsten@goodcrypto.local')
-            >>> fingerprint is not None
-            True
-            >>> expired is None
-            True
-            >>> plugin.get_fingerprint('unknown@goodcrypto.local')
+            >>> plugin.get_fingerprint(None)
             (None, None)
-            >>> from shutil import rmtree
-            >>> rmtree('/var/local/projects/goodcrypto/server/data/test_oce')
         '''
 
         fingerprint = expiration_date = None
@@ -774,18 +717,50 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
         return fingerprint, expiration_date
 
+    def get_user_ids_from_fingerprint(self, fingerprint):
+        '''
+            Returns a list of user ids associated with the fingerprint.
+
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.get_user_ids_from_fingerprint(None)
+            []
+        '''
+
+        ids = []
+        try:
+            self.log_message('getting user ids associated with {}'.format(fingerprint))
+
+            args = [gpg_constants.GET_FINGERPRINT]
+            result_code, gpg_output, gpg_error= self.gpg_command(args)
+            if result_code == gpg_constants.GOOD_RESULT:
+                if GPGPlugin.DEBUGGING: self.log_message(
+                  'get_user_ids_from_fingerprint gpg output: {}'.format(gpg_output))
+                ids = gpg_utils.parse_ids_matching_key_id(fingerprint, gpg_output)
+            # unable to get any fingerprints
+            elif result_code == gpg_constants.CONDITIONAL_RESULT:
+                self.log_message(gpg_error.strip())
+            else:
+                errors = gpg_error
+                if errors is not None:
+                    errors = gpg_error
+                self.log_message('gpg command had errors')
+                self.log_message('  result code: {} / gpg error'.format(result_code))
+                self.log_message(errors)
+        except Exception as exception:
+            self.handle_unexpected_exception(exception)
+
+        return ids
+
     def get_id_fingerprint_pairs(self, data):
         '''
             Returns a key's fingerprint and user id pairs.
 
             >>> from goodcrypto.oce import constants as oce_constants
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> filename = '/var/local/projects/goodcrypto/server/tests/mail/pubkeys/joseph@goodcrypto.remote.gpg.pub'
-            >>> with open(filename) as f:
-            ...    data = f.read()
-            ...    plugin = KeyFactory.get_crypto(NAME)
-            ...    plugin.get_id_fingerprint_pairs(data)
-            [('joseph@goodcrypto.remote', '552E 55F6 2BAF 540E 4E8F  F1BE 9FC0 F7E5 A040 C869')]
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.get_id_fingerprint_pairs(None)
+            []
         '''
 
         id_fingerprint_pairs = []
@@ -819,17 +794,348 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
 
     def fingerprint_expired(self, expiration_date):
         '''
-            Determine if this date, if there is one, is older than tomorrow.
+            Determine if this date, if there is one, has expired.
 
+            Test extreme case.
             >>> from goodcrypto.oce.key.key_factory import KeyFactory
-            >>> plugin = KeyFactory.get_crypto(NAME)
-            >>> plugin.fingerprint_expired('2014-06-05')
-            True
-            >>> plugin.fingerprint_expired('2024-06-05')
-            False
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.fingerprint_expired(None)
             False
         '''
 
         return is_expired(expiration_date)
+
+    def search_for_key(self, user_id, keyserver, wait_for_results=False):
+        '''
+            Returns a key's ID if found. If not returns the error message from attempt.
+
+            # Test extreme cases
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.search_for_key('chelsea@goodcrypto.local', None)
+            (None, None)
+            >>> plugin.search_for_key(None, 'www.uk.pgp.net')
+            (None, None)
+            >>> plugin.search_for_key(None, None)
+            (None, None)
+        '''
+
+        key_id = error_message = None
+
+        if user_id is None:
+            self.log_message('missing user id so cannot search for key from keyserver')
+
+        elif keyserver is None:
+            self.log_message('missing keyserver so cannot search for key')
+
+        else:
+            try:
+                email = get_email(user_id)
+                args = [
+                  gpg_constants.KEYSERVER_NAME, keyserver,
+                  gpg_constants.SEARCH_KEYSERVER, self.get_user_id_spec(email)
+                ]
+                result_code, gpg_output, gpg_error = self.gpg_command(args, wait_for_results=wait_for_results)
+                if result_code == gpg_constants.CONDITIONAL_RESULT:
+                    key_id = self.parse_keyserver_search(gpg_output)
+
+                if wait_for_results:
+                    if key_id is None:
+                        combined_output = '{}\n{}'.format(gpg_output.lower(), gpg_error.lower())
+                        if gpg_key_constants.KEYSERVER_CONNECTION_ERROR in combined_output:
+                            error_message = 'Unable to connect to server'
+                        elif (gpg_key_constants.KEYSERVER_CONNECTION_TIMEDOUT in combined_output or
+                              gpg_key_constants.KEYSERVER_TIMEDOUT in combined_output):
+                            error_message = 'Timed out connecting to server'
+                        elif gpg_key_constants.KEYSERVER_KEY_NOT_FOUND in combined_output:
+                            # we don't need to record this error as it's not an error with the server
+                            error_message = None
+                        else:
+                            error_message = gpg_error
+                            self.log_message('result code: {}'.format(result_code))
+                            self.log_message('gpg output: {}'.format(gpg_output))
+
+                    self.log_message('found key for {}: {}'.format(user_id, key_id is not None))
+                    if error_message is not None:
+                        self.log_message('error message: {}'.format(error_message))
+                else:
+                    self.log_message('result code after starting keyserver search on {} for {}: {}'.format(
+                        email, keyserver, result_code))
+
+            except Exception:
+                record_exception()
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+
+        return key_id, error_message
+
+
+    def retrieve_key(self, key_id, keyserver, wait_for_results=False):
+        '''
+            Returns ok if key retrieved successfully.
+
+            # Test extreme cases
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.retrieve_key('F2AD85AC1E42B367', None)
+            False
+            >>> plugin.retrieve_key(None, 'www.uk.pgp.net')
+            False
+            >>> plugin.retrieve_key(None, None)
+            False
+        '''
+
+        result_ok = False
+
+        if key_id is None:
+            self.log_message('missing key id so cannot retrieve key from keyserver')
+
+        elif keyserver is None:
+            self.log_message('missing keyserver so cannot retrieve key for {}'.format(key_id))
+
+        else:
+            try:
+                args = [
+                  gpg_constants.KEYSERVER_NAME, keyserver,
+                  gpg_constants.RETRIEVE_KEYS, strip_fingerprint(key_id)
+                ]
+                result_code, gpg_output, gpg_error= self.gpg_command(args, wait_for_results=wait_for_results)
+                result_ok = result_code == gpg_constants.GOOD_RESULT
+
+            except Exception:
+                record_exception()
+                self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+
+            finally:
+                if wait_for_results:
+                    self.log_message('retrieved key for {}: {}'.format(key_id, result_ok))
+                else:
+                    self.log_message('finished starting to retrieve key for {}'.format(key_id))
+
+        return result_ok
+
+    def parse_keyserver_search(self, output):
+        '''
+            Parse the output of a keyserver search.
+
+            Test extreme case.
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> results = plugin.parse_keyserver_search(None)
+            >>> results == None
+            True
+        '''
+
+        def str2date(s):
+
+            try:
+                m = re.match('(\d\d\d\d)-(\d\d)-(\d\d)', s)
+                d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            except:
+                d = date.today() - timedelta(days=1)
+
+            return d
+
+
+        latest_fingerprint = None
+
+        if output is None:
+            self.log_message('no output for parse_keyserver_search')
+        else:
+            # gpg: searching for "wk@gnupg.org" from hkp server pgp.mit.edu
+            # (1)	Werner Koch (ha ha test) <wk@gnupg.org>
+            #         1024 bit DSA key 0x2F7998F3DBFC6AD9, created: 2008-01-08, expires: 2008-01-11 (expired)
+            # (2)	Werner Koch <wk@gnupg.org>
+            #       Werner Koch <wk@g10code.com>
+            #       Werner Koch <werner@eifzilla.de>
+            #         2048 bit DSA key 0xF2AD85AC1E42B367, created: 2007-12-31, expires: 2018-12-31
+            # (3)	Werner Koch
+            #       Werner Koch <wk@gnupg.org>
+            #       Werner Koch <wk@g10code.com>
+            #       Werner Koch <werner@fsfe.org>
+            #         1024 bit DSA key 0x5DE249965B0358A2, created: 1999-03-15, expires: 2011-07-11 (expired)
+            # (4)	Werner Koch <wk@gnupg.org>
+            #       Werner Koch <wk@openit.de>
+            #       Werner Koch <wk@g10code.com>
+            #       Werner Koch <werner.koch@guug.de>
+            #         1024 bit DSA key 0x6C7EE1B8621CC013, created: 1998-07-07, expires: 2004-12-31 (expired)
+            # Keys 1-4 of 4 for "wk@gnupg.org".  gpg: Sorry, we are in batchmode - can't get input
+            fingerprints = []
+            for line in output.split('\n'):
+                m = re.match('\s+\d\d\d\d bit \w+ key 0x(.*), created: (\d\d\d\d-\d\d-\d\d), expires: (\d\d\d\d-\d\d-\d\d).*?', line)
+                if not m:
+                    m = re.match('\s+\d\d\d\d bit \w+ key 0x(.*), created: (\d\d\d\d-\d\d-\d\d)', line)
+                if m:
+                    fingerprint = m.group(1)
+                    created = str2date(m.group(2))
+                    try:
+                        expires = str2date(m.group(3))
+                    except:
+                        expires = None
+                        record_exception()
+
+                    fingerprints.append((fingerprint, created, expires,))
+                    self.log_message('found fingerprint: {} created on: {} expires: {}'.format(
+                        fingerprint, created, expires))
+
+            if len(fingerprints) > 0:
+                today = date.today()
+                latest_fingperint = latest_creation = latest_expiration = None
+                for fingerprint, created, expires in fingerprints:
+
+                    if latest_creation is None:
+                        if expires is None or expires > today:
+                            latest_fingerprint = fingerprint
+                            latest_creation = created
+                            lastest_expiration = expires
+
+                    elif expires is None or expires > today:
+                        if created > latest_creation:
+                            latest_fingerprint = fingerprint
+                            latest_creation = created
+                            lastest_expiration = expires
+
+        return latest_fingerprint
+
+    def parse_keyserver_search_error(self, output, error):
+        '''
+            Returns an error message after failing to get a key.
+
+            Test extreme cases.
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.parse_keyserver_search_error(None, None)
+            'Unable to connect to server'
+        '''
+
+        server_error = None
+
+        try:
+            # gpg: searching for "unknown@example.com" from hkp server pgp.mit.edu
+            # gpg: key "unknown@example.com" not found on keyserver
+            #
+            # gpg: searching for "unknown@example.com" from hkp server mit.edu
+            # gpg: keyserver timed out
+            # gpg: keyserver search failed: keyserver error
+            #
+            # gpg: searching for "unknown@example.com" from hkp server keyserver.ubuntu.com
+            # ?: keyserver.ubuntu.com: Host not found
+            # gpgkeys: HTTP search error 7: couldn't connect: Connection timed out
+            # gpg: key "unknown@example.com" not found on keyserver
+            # gpg: keyserver internal error
+            # gpg: keyserver search failed: keyserver error
+
+            combined_output = ''.join('{} {}'.format(output, error).lower())
+            if gpg_key_constants.KEYSERVER_CONNECTION_ERROR in combined_output:
+                server_error = 'Unable to connect to server'
+            elif (gpg_key_constants.KEYSERVER_CONNECTION_TIMEDOUT in combined_output or
+                  gpg_key_constants.KEYSERVER_TIMEDOUT in combined_output):
+                server_error = 'Timed out connecting to server'
+            elif gpg_key_constants.KEYSERVER_KEY_NOT_FOUND in combined_output:
+                # we don't need to record this error as it's not an error with the server
+                server_error = None
+                self.log_message('could not find key on server')
+            else:
+                self.log_message(error)
+                server_error = 'Unable to connect to server'
+        except:
+            server_error = 'Unable to connect to server'
+            record_exception()
+
+        if server_error is not None:
+            self.log_message('search keyserver error message: {}'.format(server_error))
+        else:
+            self.log_message('key not found on server')
+
+        return server_error
+
+    def parse_keyserver_retrieve(self, output):
+        '''
+            Parse the output of a keyserver key retrieval.
+
+            Test extreme case.
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.parse_keyserver_retrieve(None)
+            []
+        '''
+
+        imported_ids = []
+
+        if output is None:
+            self.log_message('no output for parse_keyserver_retrieve')
+        else:
+            # gpg: armor header: Version: SKS 1.1.5
+            # gpg: armor header: Comment: Hostname: pgp.mit.edu
+            # gpg: pub  2048D/0xF2AD85AC1E42B367 2007-12-31  Werner Koch <wk@gnupg.org>
+            # gpg: key 0xF2AD85AC1E42B367: public key "Werner Koch <wk@gnupg.org>" imported
+            # gpg: Total number processed: 1
+            # gpg:               imported: 1
+
+            ids = []
+            for line in output.split('\n'):
+                m = re.match('gpg: pub\s+.[0-9]+D?/0x(.*?)\s+\d\d\d\d-\d\d-\d\d\s+(.*)', line)
+                if not m:
+                    m = re.match('gpg: key\s+0x(.*?): public key\s+"(.*)"\s+imported', line)
+                if m:
+                    user_id = m.group(2)
+                    if user_id not in ids:
+                        ids.append(user_id)
+                        imported_ids.append((user_id, m.group(1)))
+
+            if len(imported_ids) > 0:
+                self.log_message('imported user ids: {}'.format(imported_ids))
+            else:
+                self.log_message('unable to find imported ids: {}'.format(output))
+
+        return imported_ids
+
+    def get_background_job_results(self, email, key_job, good_result=gpg_constants.GOOD_RESULT):
+        '''
+            Get the results from the a job (e.g., gen-key) if not waiting for results.
+            This allows another function to run after the first job finishes
+            without waiting, but instead using RQ's depends_on function.
+
+            Test extreme case
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.get_background_job_results(None, None)
+            (False, False, None, None)
+        '''
+        result_code = gpg_constants.ERROR_RESULT
+        result_ok = timed_out = False
+        gpg_output = gpg_error = job_id = None
+        try:
+            self.log_message('good result code for background job: {}'.format(good_result))
+            result_code, gpg_output, gpg_error = key_job.result
+            job_id = key_job.get_id()
+            self.log_message('getting background job result code for job {}: {}'.format(job_id, result_code))
+
+            if gpg_output is not None: gpg_output = b64decode(gpg_output)
+            if gpg_error is not None: gpg_error = b64decode(gpg_error)
+
+            if result_code == good_result:
+                if self.DEBUGGING:
+                    if gpg_output: self.log_message(gpg_output)
+                    if gpg_error: self.log_message(gpg_error)
+            else:
+                self.log_message('error while running background job for {}: {} result code'.format(
+                     email, result_code))
+                if gpg_output: self.log_message(gpg_output)
+                if gpg_error: self.log_message(gpg_error)
+
+            result_ok = result_code == good_result
+            self.log_message('result ok: {}'.format(result_ok))
+            timed_out = result_code == gpg_constants.TIMED_OUT_RESULT
+            self.log_message('timedout: {}'.format(timed_out))
+
+        except Exception as exception:
+            self.handle_unexpected_exception(exception)
+        finally:
+            self.log_message('finished background {} job for {}'.format(job_id, email))
+
+        return result_ok, timed_out, gpg_output, gpg_error
+
+    def get_good_search_result(self):
+        '''
+            Returns the result code of a successful search.
+        '''
+
+        return gpg_constants.CONDITIONAL_RESULT
+
 
