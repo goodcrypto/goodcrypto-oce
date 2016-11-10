@@ -1,6 +1,6 @@
 '''
     Copyright 2014-2016 GoodCrypto
-    Last modified: 2016-02-19
+    Last modified: 2016-03-05
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -918,6 +918,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Parse the output of a keyserver search.
 
             Test extreme case.
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> results = plugin.parse_keyserver_search(None)
             >>> results == None
@@ -1000,6 +1001,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Returns an error message after failing to get a key.
 
             Test extreme cases.
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.parse_keyserver_search_error(None, None)
             'Unable to connect to server'
@@ -1051,6 +1053,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             Parse the output of a keyserver key retrieval.
 
             Test extreme case.
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.parse_keyserver_retrieve(None)
             []
@@ -1093,6 +1096,7 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
             without waiting, but instead using RQ's depends_on function.
 
             Test extreme case
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
             >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
             >>> plugin.get_background_job_results(None, None)
             (False, False, None, None)
@@ -1134,6 +1138,11 @@ class GPGPlugin(GPGCryptoPlugin, AbstractKey):
     def get_good_search_result(self):
         '''
             Returns the result code of a successful search.
+
+            >>> from goodcrypto.oce.key.key_factory import KeyFactory
+            >>> plugin = KeyFactory.get_crypto(gpg_key_constants.NAME)
+            >>> plugin.get_good_search_result()
+            2
         '''
 
         return gpg_constants.CONDITIONAL_RESULT
