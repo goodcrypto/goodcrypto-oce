@@ -1,12 +1,12 @@
 '''
-    Copyright 2014 GoodCrypto
-    Last modified: 2015-09-21
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-08-03
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
-from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
 from goodcrypto.oce.crypto_factory import CryptoFactory
+from syr.exception import record_exception
 
 
 class KeyFactory(CryptoFactory):
@@ -82,14 +82,14 @@ class KeyFactory(CryptoFactory):
             >>> KeyFactory._key_plugins = {}
             >>> test_plugin = KeyFactory.get_crypto('TestPlugin', 'mycrypto.key.test_plugin.TestPlugin')
             >>> type(test_plugin)
-            <type 'NoneType'>
+            <class 'NoneType'>
 
             Get the interface to a crypto package not supplied GoodCrypto Mail
             If you fail to include the classname, then there's no plugin
             >>> KeyFactory._key_plugins = {}
             >>> unknown_plugin = KeyFactory.get_crypto('Test')
             >>> type(unknown_plugin)
-            <type 'NoneType'>
+            <class 'NoneType'>
         '''
 
         KeyFactory.log_debug('getting key crypto: {}'.format(encryption_name))
@@ -120,11 +120,13 @@ class KeyFactory(CryptoFactory):
             Assumes that the software is part of goodcrypto's oce package
             and follows that package's naming convention.
 
-            >>> KeyFactory.get_classname('GPG')
-            'goodcrypto.oce.key.gpg_plugin.GPGPlugin'
+            >>> classname = KeyFactory.get_classname('GPG')
+            >>> classname == 'goodcrypto.oce.key.gpg_plugin.GPGPlugin'
+            True
 
-            >>> KeyFactory.get_classname('Test')
-            'goodcrypto.oce.key.test_plugin.TestPlugin'
+            >>> classname = KeyFactory.get_classname('Test')
+            >>> classname == 'goodcrypto.oce.key.test_plugin.TestPlugin'
+            True
         '''
 
         KeyFactory.log_debug('getting key classname: {}'.format(encryption_name))
@@ -142,13 +144,15 @@ class KeyFactory(CryptoFactory):
         '''
             Get the name for the encryption software.
 
-            >>> KeyFactory.get_name('GPG')
-            'GPG'
+            >>> name = KeyFactory.get_name('GPG')
+            >>> name == 'GPG'
+            True
 
             >>> KeyFactory._key_plugins = {}
             >>> gpg_plugin = KeyFactory.get_crypto('GPG')
-            >>> KeyFactory.get_name(gpg_plugin)
-            'gpg_plugin.GPG'
+            >>> name = KeyFactory.get_name(gpg_plugin)
+            >>> name == 'gpg_plugin.GPG'
+            True
         '''
 
         name = ''
@@ -159,7 +163,7 @@ class KeyFactory(CryptoFactory):
         except Exception as exception:
             if type(exception) != AttributeError:
                 record_exception()
-                KeyFactory.log_debug('EXCEPTION - see goodcrypto.utils.exception.log for details')
+                KeyFactory.log_debug('EXCEPTION - see syr.exception.log for details')
             try:
                 if isinstance(crypto, str):
                     name = crypto
@@ -168,7 +172,7 @@ class KeyFactory(CryptoFactory):
                     name = crypto.get_name()
             except Exception:
                 record_exception()
-                KeyFactory.log_debug('EXCEPTION - see goodcrypto.utils.exception.log for details')
+                KeyFactory.log_debug('EXCEPTION - see syr.exception.log for details')
 
         KeyFactory.reset_key_crypto()
         KeyFactory.log_debug('got key name: {}'.format(name))
@@ -204,8 +208,9 @@ class KeyFactory(CryptoFactory):
             >>> crypto_module = CryptoFactory.get_plugin_map()['GPG']
             >>> gpg_module == crypto_module
             True
-            >>> CryptoFactory.get_crypto_plugin_class_prefix()
-            'goodcrypto.oce.'
+            >>> prefix = CryptoFactory.get_crypto_plugin_class_prefix()
+            >>> prefix == 'goodcrypto.oce.'
+            True
             >>> KeyFactory._key_plugins = {'GPG': gpg_key_module}
             >>> KeyFactory.setup_key_crypto()
             >>> crypto_module = CryptoFactory.get_plugin_map()['GPG']
@@ -213,8 +218,9 @@ class KeyFactory(CryptoFactory):
             False
             >>> gpg_key_module == crypto_module
             True
-            >>> CryptoFactory.get_crypto_plugin_class_prefix()
-            'goodcrypto.oce.key.'
+            >>> prefix = CryptoFactory.get_crypto_plugin_class_prefix()
+            >>> prefix == 'goodcrypto.oce.key.'
+            True
             >>> KeyFactory.reset_key_crypto()
         '''
 
@@ -239,17 +245,20 @@ class KeyFactory(CryptoFactory):
             >>> crypto_module = CryptoFactory.get_plugin_map()['GPG']
             >>> gpg_module == crypto_module
             True
-            >>> CryptoFactory.get_crypto_plugin_class_prefix()
-            'goodcrypto.oce.'
+            >>> prefix = CryptoFactory.get_crypto_plugin_class_prefix()
+            >>> prefix == 'goodcrypto.oce.'
+            True
             >>> KeyFactory._key_plugins = {}
             >>> KeyFactory.setup_key_crypto()
             >>> 'GPG' not in CryptoFactory.get_plugin_map()
             True
-            >>> CryptoFactory.get_crypto_plugin_class_prefix()
-            'goodcrypto.oce.key.'
+            >>> prefix = CryptoFactory.get_crypto_plugin_class_prefix()
+            >>> prefix == 'goodcrypto.oce.key.'
+            True
             >>> KeyFactory.reset_key_crypto()
-            >>> CryptoFactory.get_crypto_plugin_class_prefix()
-            'goodcrypto.oce.'
+            >>> prefix = CryptoFactory.get_crypto_plugin_class_prefix()
+            >>> prefix == 'goodcrypto.oce.'
+            True
             >>> crypto_module = CryptoFactory.get_plugin_map()['GPG']
             >>> gpg_module == crypto_module
             True

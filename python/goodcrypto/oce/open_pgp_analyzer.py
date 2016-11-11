@@ -1,7 +1,6 @@
-#! /usr/bin/python
 '''
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-09-17
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-06-10
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
@@ -24,13 +23,15 @@ class OpenPGPAnalyzer(object):
         to allow 3rd party programs to access this excellent java encryption tool.
     '''
 
+    DEBUGGING = False
+
     # the gpg --list-packets command takes minutes
     USE_ANALYZER = False
 
     def __init__(self):
         '''
-            >>> analyzer = OpenPGPAnalyzer()
-            >>> analyzer != None
+            <<< analyzer = OpenPGPAnalyzer()
+            <<< analyzer != None
             True
         '''
 
@@ -41,35 +42,38 @@ class OpenPGPAnalyzer(object):
         '''
             Determines if the data is encrypted.
 
-            >>> from goodcrypto.oce import constants as oce_constants
+            >>> from goodcrypto.oce import test_constants
             >>> plugin = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
             >>> encrypted_data, __ = plugin.sign_encrypt_and_armor(
-            ...   oce_constants.TEST_DATA_STRING, oce_constants.EDWARD_LOCAL_USER,
-            ...   oce_constants.JOSEPH_REMOTE_USER, oce_constants.EDWARD_PASSPHRASE)
+            ...   test_constants.TEST_DATA_STRING, test_constants.EDWARD_LOCAL_USER,
+            ...   test_constants.JOSEPH_REMOTE_USER, test_constants.EDWARD_PASSPHRASE)
             >>> analyzer = OpenPGPAnalyzer()
             >>> analyzer.is_encrypted(
-            ...    bytearray(encrypted_data), crypto=plugin, passphrase=oce_constants.EDWARD_PASSPHRASE)
+            ...   bytearray(encrypted_data, 'utf-8'), crypto=plugin,
+            ...   passphrase=test_constants.EDWARD_PASSPHRASE)
             True
         '''
 
         encrypted = False
 
         try:
+            if crypto is None or 'list_packets' not in dir(crypto):
+                crypto = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
             if OpenPGPAnalyzer.USE_ANALYZER:
-                if crypto is None or 'list_packets' not in dir(crypto):
-                    crypto = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
                 packets = crypto.list_packets(data, passphrase=passphrase)
                 encrypted = packets is not None and len(packets) > 0
             else:
                 # !! this risks spoofing
                 encrypted = (
-                    gpg_constants.BEGIN_PGP_MESSAGE in data and
-                    gpg_constants.END_PGP_MESSAGE in data)
+                    crypto.get_begin_pgp_message() in str(data) and
+                    crypto.get_end_pgp_message() in str(data))
 
         except CryptoException as crypto_exception:
             self.log_message(crypto_exception.value)
 
         self.log_message('data encrypted: {}'.format(encrypted))
+        if self.DEBUGGING:
+            self.log_message('data:\n{}'.format(data))
 
         return encrypted
 
@@ -78,13 +82,13 @@ class OpenPGPAnalyzer(object):
         '''
             Determines if the data is signed.
 
-            >>> from goodcrypto.oce.constants import EDWARD_LOCAL_USER, EDWARD_PASSPHRASE
-            >>> plugin = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
-            >>> signed_data, error_message = plugin.sign('This is a test', EDWARD_LOCAL_USER, EDWARD_PASSPHRASE)
-            >>> analyzer = OpenPGPAnalyzer()
-            >>> analyzer.is_signed(signed_data, crypto=plugin)
+            <<< from goodcrypto.oce.test_constants import EDWARD_LOCAL_USER, EDWARD_PASSPHRASE
+            <<< plugin = CryptoFactory.get_crypto(CryptoFactory.DEFAULT_ENCRYPTION_NAME)
+            <<< signed_data, error_message = plugin.sign('This is a test', EDWARD_LOCAL_USER, EDWARD_PASSPHRASE)
+            <<< analyzer = OpenPGPAnalyzer()
+            <<< analyzer.is_signed(signed_data, crypto=plugin)
             True
-            >>> error_message is None
+            <<< error_message is None
             True
         '''
 
@@ -106,11 +110,11 @@ class OpenPGPAnalyzer(object):
         '''
             Log the message to the local log.
 
-            >>> import os.path
-            >>> from syr.log import BASE_LOG_DIR
-            >>> from syr.user import whoami
-            >>> OpenPGPAnalyzer().log_message('test')
-            >>> os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.open_pgp_analyzer.log'))
+            <<< import os.path
+            <<< from syr.log import BASE_LOG_DIR
+            <<< from syr.user import whoami
+            <<< OpenPGPAnalyzer().log_message('test')
+            <<< os.path.exists(os.path.join(BASE_LOG_DIR, whoami(), 'goodcrypto.oce.open_pgp_analyzer.log'))
             True
         '''
 

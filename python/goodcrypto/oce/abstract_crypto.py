@@ -1,16 +1,17 @@
 '''
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2016-02-13
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-08-03
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
+from abc import abstractmethod
 
-from abc import ABCMeta, abstractmethod
+from goodcrypto.oce import constants
+from syr.exception import record_exception
+from syr.abstract_python3_class import AbstractPythonClass
 
-from goodcrypto.utils.exception import record_exception
 
-
-class AbstractCrypto(object):
+class AbstractCrypto(AbstractPythonClass):
     """
         Cryptographic service provided by the Open Crypto Engine.
 
@@ -80,9 +81,6 @@ class AbstractCrypto(object):
               you want to trust.
     """
 
-    __metaclass__ = ABCMeta
-
-
     @abstractmethod
     def get_name(self):
         '''
@@ -94,7 +92,7 @@ class AbstractCrypto(object):
     @abstractmethod
     def get_crypto_version(self):
         '''
-            Get the version of the underlying crypto crypto.
+            Get the version of the underlying crypto.
 
             @return Crypto version
         '''
@@ -212,33 +210,88 @@ class AbstractCrypto(object):
         '''
 
     @abstractmethod
-    def get_good_result(self):
+    def is_good_result(self):
         '''
-            Get the return code if a good result
-        '''
-
-    @abstractmethod
-    def get_error_result(self):
-        '''
-            Get the return code if an error
+            Return if the exit code is a good result
         '''
 
     @abstractmethod
-    def get_timedout_result(self):
+    def is_error_result(self):
         '''
-            Get the return code if a call timed out
+            Return if the exit code is an error
+        '''
+
+    @abstractmethod
+    def is_timedout_result(self):
+        '''
+            Return if job timed out
         '''
 
     @abstractmethod
     def log_message(self, message):
         ''' Log a message. '''
 
+    def get_begin_pgp_message(self):
+        '''
+            Get the string which indicates the beginning of a PGP message.
+
+            >>> from goodcrypto.oce.crypto_factory import CryptoFactory
+            >>> plugin = CryptoFactory.get_crypto(ENCRYPTION_NAME)
+            >>> plugin.get_begin_pgp_message()
+            '-----BEGIN PGP MESSAGE-----'
+        '''
+
+        return constants.BEGIN_PGP_MESSAGE
+
+    def get_end_pgp_message(self):
+        ''' Get the string which indicates the end of a PGP message.
+
+            >>> from goodcrypto.oce.crypto_factory import CryptoFactory
+            >>> plugin = CryptoFactory.get_crypto(ENCRYPTION_NAME)
+            >>> plugin.get_end_pgp_message()
+            '-----END PGP MESSAGE-----'
+        '''
+
+        return constants.END_PGP_MESSAGE
+
+    def get_begin_pgp_signed_message(self):
+        ''' Get the string which indicates the beginning of a signed PGP message.
+
+            >>> from goodcrypto.oce.crypto_factory import CryptoFactory
+            >>> plugin = CryptoFactory.get_crypto(ENCRYPTION_NAME)
+            >>> plugin.gget_begin_pgp_signed_message()
+            '-----BEGIN PGP SIGNED MESSAGE-----'
+        '''
+
+        return constants.BEGIN_PGP_SIGNED_MESSAGE
+
+    def get_begin_pgp_signature(self):
+        ''' Get the string which indicates the beginning of a PGP signature.
+
+            >>> from goodcrypto.oce.crypto_factory import CryptoFactory
+            >>> plugin = CryptoFactory.get_crypto(ENCRYPTION_NAME)
+            >>> plugin.get_begin_pgp_signature()
+            '-----BEGIN PGP SIGNATURE-----'
+        '''
+
+        return constants.BEGIN_PGP_SIGNATURE
+
+    def get_end_pgp_signed_message(self):
+        ''' Get the string which indicates the end of a signed PGP message.
+
+            >>> from goodcrypto.oce.crypto_factory import CryptoFactory
+            >>> plugin = CryptoFactory.get_crypto(ENCRYPTION_NAME)
+            >>> plugin.get_end_pgp_signed_message()
+            -----END PGP SIGNATURE-----'
+        '''
+
+        return constants.END_PGP_SIGNATURE
+
     def log_data(self, data, message="data"):
         ''' Log data. '''
 
         self.log_message("{} {}:\n".format(message, data))
 
-    #@synchronized
     def log_error(self, message, result_code=None):
         '''
             Log an error.
@@ -263,7 +316,7 @@ class AbstractCrypto(object):
 
             record_exception()
             self.log_message(str(errorMsg))
-            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            self.log_message('EXCEPTION - see syr.exception.log for details')
         except Exception:
             pass
 
@@ -286,5 +339,5 @@ class AbstractCrypto(object):
 
         self.log_message('Unexpected error: {}'.format(t))
         record_exception()
-        self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+        self.log_message('EXCEPTION - see syr.exception.log for details')
 

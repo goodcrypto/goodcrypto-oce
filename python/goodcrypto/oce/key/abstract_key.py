@@ -1,18 +1,15 @@
 '''
     Copyright 2014-2016 GoodCrypto
-    Last modified: 2016-02-16
+    Last modified: 2016-06-01
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
+from abc import abstractmethod
+from syr.abstract_python3_class import AbstractPythonClass
 
-from abc import ABCMeta, abstractmethod
 
-
-class AbstractKey(object):
+class AbstractKey(AbstractPythonClass):
     ''' Key interface for the Open Crypto Engine. '''
-
-    __metaclass__ = ABCMeta
-
 
     @abstractmethod
     def get_plugin_name(self):
@@ -176,22 +173,24 @@ class AbstractKey(object):
 
 
     @abstractmethod
-    def search_for_key(self, user_id, keyserver):
+    def search_for_key(self, user_id, keyserver, wait_for_results=False):
         '''
-            Returns a key's ID if found. If not returns the error message from attempt.
+            Search for a key on the keyserver.
 
             @param  user_id                                       ID for the key. This is typically an email address.
             @param  keyserver                                     The keyserver to search.
-            @return                                              Key ID if found; otherwise, error message from attempt.
+            @param  wait_for_results                              Waits for results
+            @return                                           OK if search started.
         '''
 
     @abstractmethod
-    def retrieve_key(self, key_id, keyserver):
+    def retrieve_key(self, key_id, keyserver, wait_for_results=False):
         '''
             Returns ok if key retrieved successfully.
 
             @param  key_id                                        ID for the key.
             @param  keyserver                                    The keyserver to use to get key.
+            @param  wait_for_results                              Waits for results
             @return                                              OK if successful.
         '''
 
@@ -209,6 +208,22 @@ class AbstractKey(object):
             Returns an error message after failing to get a key.
 
             @return                 Error message about failure or none if failure due to key not found.
+        '''
+
+    @abstractmethod
+    def parse_keyserver_ids_retrieved(self, output):
+        '''
+            Parse the output of a keyserver key retrieval.
+
+            @return                 Imported ids that were retrieved or an empty list.
+        '''
+
+    @abstractmethod
+    def parse_create_key_results(self, output):
+        '''
+            Parse the output from creating a key.
+
+            @return                 Fingerprint of key or None.
         '''
 
     @abstractmethod

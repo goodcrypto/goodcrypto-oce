@@ -5,14 +5,13 @@
     This module is on the worker/server end of an rq fifo queue.
     Other code should enqueue all gpg calls to the client end of that queue.
 
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-12-20
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-08-03
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 import os, sh
-from base64 import b64decode, b64encode
-from cStringIO import StringIO
+from io import StringIO
 from random import uniform
 from rq.timeouts import JobTimeoutException
 from tempfile import gettempdir
@@ -24,12 +23,12 @@ gc_django.setup()
 
 from goodcrypto.oce import gpg_constants
 from goodcrypto.oce.key.gpg_utils import parse_fingerprint_and_expiration
-from goodcrypto.oce.rq_gpg_settings import GPG_RQ, GPG_REDIS_PORT
+from goodcrypto.oce.gpg_queue_settings import GPG_RQ, GPG_REDIS_PORT
 from goodcrypto.oce.utils import is_expired
-from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
-from goodcrypto.utils.manage_rq import get_job_count
+from goodcrypto.utils.manage_queues import get_job_count
 from syr.cli import minimal_env
+from syr.exception import record_exception
 from syr.lock import locked
 from syr.times import elapsed_time
 
@@ -45,13 +44,9 @@ def execute_gpg_command(home_dir, initial_args, passphrase=None, data=None):
         if initial_args is not None:
             new_args = []
             for arg in initial_args:
-                new_args.append(b64decode(arg))
+                new_args.append(arg)
             initial_args = new_args
             log.write_and_flush('gpg exec: {}'.format(initial_args))
-        if passphrase is not None:
-            passphrase = b64decode(passphrase)
-        if data is not None:
-            data = bytearray(b64decode(data))
 
         auto_check_trustdb = gpg_constants.CHECK_TRUSTDB in initial_args
 
@@ -83,22 +78,18 @@ def execute_gpg_command(home_dir, initial_args, passphrase=None, data=None):
                 initial_args, passphrase, data)
 
         log.write_and_flush('result code: {}'.format(result_code))
-        if gpg_output is not None:
-            gpg_output = b64encode(gpg_output)
-        if gpg_error is not None:
-            gpg_error = b64encode(gpg_error)
     except JobTimeoutException as job_exception:
         log.write_and_flush('gpg exec {}'.format(str(job_exception)))
         result_code = gpg_constants.TIMED_OUT_RESULT
-        gpg_error = b64encode(str(job_exception))
+        gpg_error = str(job_exception)
         gpg_output = None
-        log.write_and_flush('EXCEPTION - see goodcrypto.utils.exception.log for details')
+        log.write_and_flush('EXCEPTION - see syr.exception.log for details')
         record_exception()
     except Exception as exception:
         result_code = gpg_constants.ERROR_RESULT
         gpg_output = None
-        gpg_error = b64encode(str(exception))
-        log.write_and_flush('EXCEPTION - see goodcrypto.utils.exception.log for details')
+        gpg_error = str(exception)
+        log.write_and_flush('EXCEPTION - see syr.exception.log for details')
         record_exception()
 
         if gpg_exec is not None and gpg_exec.gpg_home is not None:
@@ -113,19 +104,20 @@ def need_private_key(home_dir, data):
     ''' See if the private key already exists. '''
 
     private_key_exists = False
+    unicode_data = str(data)
 
     gpg_exec = GPGExec(home_dir)
     try:
-        i = data.find(gpg_constants.NAME_EMAIL)
+        i = unicode_data.find(gpg_constants.NAME_EMAIL)
         if i > 0:
-            email = data[i + len(gpg_constants.NAME_EMAIL):]
+            email = unicode_data[i + len(gpg_constants.NAME_EMAIL):]
             i = email.find(gpg_constants.EOL)
             if i > 0:
                 email = email[:i]
             gpg_exec.log_message('checking if we need to create key for: "{}"'.format(email))
         else:
             email = None
-            gpg_exec.log_message('unable to find email in: {}'.format(data))
+            gpg_exec.log_message('unable to find email in: {}'.format(unicode_data))
 
         if email is None or len(email.strip()) <= 0:
             private_key_exists = False
@@ -139,7 +131,7 @@ def need_private_key(home_dir, data):
         gpg_exec.log_message('private key exists for {}: {}'.format(email, private_key_exists))
     except:
         record_exception()
-        gpg_exec.log_message('EXCEPTION: see goodcrypto.utils.exception.log for details')
+        gpg_exec.log_message('EXCEPTION: see syr.exception.log for details')
 
     return not private_key_exists
 
@@ -161,7 +153,7 @@ def prep_to_delete_key(home_dir, initial_args):
                 gpg_exec.log_message('no fingperint for {}'.format(email))
         except:
             record_exception()
-            gpg_exec.log_message('EXCEPTION: see goodcrypto.utils.exception.log for details')
+            gpg_exec.log_message('EXCEPTION: see syr.exception.log for details')
 
     return fingerprint
 
@@ -207,11 +199,11 @@ class GPGExec(object):
         # --no-auto-key-locate: Don't look for keys outside our system
         # --no-auto-check-trustdb: Do not always update the trust db because it goes online
         # --always-trust: We don't have any trust infrastructure yet.
-        ## --utf8-strings: Assume all arguments are in UTF-8 format.
+        # --utf8-strings: Assume all arguments are in UTF-8 format.
         # redirect stdout and stderr so we can exam the results as needed
         kwargs = dict(no_tty=True, verbose=True, homedir=self.gpg_home,
            ignore_time_conflict=True, ignore_valid_from=True, batch=True,
-           no_auto_key_locate=True, lock_once=True, _env=minimal_env())
+           no_auto_key_locate=True, lock_once=True, utf8_strings=True, _env=minimal_env())
 
         # gpg tries to go online when it updates the trustdb
         # so we don't want to check on every command
@@ -251,8 +243,9 @@ class GPGExec(object):
                 stdin_file.write(gpg_constants.EOL)
 
             if data:
-                stdin_file.write(buffer(data))
-
+                if isinstance(data, bytearray) or isinstance(data, bytes):
+                    data = data.decode()
+                stdin_file.write(data)
                 data_length = len(data)
                 self.log_message('data length: {}'.format(data_length))
                 if data_length > gpg_constants.LARGE_DATA_CHUNK:
@@ -279,9 +272,9 @@ class GPGExec(object):
             self.gpg_error = str(exception)
 
             self.log_message('result code: {}'.format(self.result_code))
-            if gpg_error and len(gpg_error.strip()) > 0:
+            if self.gpg_error and len(self.gpg_error.strip()) > 0:
                 self.log_message("gpg error: {}".format(self.gpg_error))
-            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            self.log_message('EXCEPTION - see syr.exception.log for details')
             record_exception()
 
         self.log.flush()
@@ -292,10 +285,15 @@ class GPGExec(object):
         ''' Run the GPG command. '''
 
         try:
+            self.gpg_output = self.gpg_error = None
             if gpg_constants.ENCRYPT_DATA in args:
                 command = gpg_constants.ENCRYPT_DATA
             elif gpg_constants.DECRYPT_DATA in args:
                 command = gpg_constants.DECRYPT_DATA
+            elif gpg_constants.SEARCH_KEYSERVER in args:
+                command = gpg_constants.SEARCH_KEYSERVER
+            elif gpg_constants.RETRIEVE_KEYS in args:
+                command = gpg_constants.RETRIEVE_KEYS
             else:
                 command = args[0]
             self.log_message('--- started executing: {} ---'.format(command))
@@ -318,22 +316,14 @@ class GPGExec(object):
             self.log_message('--- finished executing: {} ---'.format(command))
 
             self.result_code = gpg_results.exit_code
-            self.gpg_output = gpg_results.stdout
-            self.gpg_error = gpg_results.stderr
+            self.gpg_output = self.get_decoded_results(gpg_results.stdout)
+            self.gpg_error = self.get_decoded_results(gpg_results.stderr)
 
             if GPGExec.DEBUGGING:
                 if self.gpg_output:
-                    self.log_message('stdout:')
-                    if type(self.gpg_output) == str:
-                        self.log_message(self.gpg_output)
-                    else:
-                        self.log_message(repr(self.gpg_output))
+                    self.log_message('stdout: {}'.format(self.gpg_output))
                 if self.gpg_error:
-                    self.log_message('stderr:')
-                    if type(self.gpg_output) == str:
-                        self.log_message(self.gpg_error)
-                    else:
-                        self.log_message(repr(self.gpg_error))
+                    self.log_message('stderr:{}'.format(self.gpg_error))
 
         except sh.ErrorReturnCode as exception:
             self.result_code = exception.exit_code
@@ -355,12 +345,45 @@ class GPGExec(object):
         except JobTimeoutException as job_exception:
             self.log_message('run_gpg exception: {}'.format(str(job_exception)))
             self.result_code = gpg_constants.TIMED_OUT_RESULT
-            self.gpg_error = b64encode(str(job_exception))
+            self.gpg_error = str(job_exception)
             self.gpg_output = None
 
             self.log_message('--- timedout executing {} ---'.format(command))
 
-        return self.result_code == gpg_constants.GOOD_RESULT
+        return (self.result_code == gpg_constants.GOOD_RESULT or
+                self.result_code == gpg_constants.CONDITIONAL_RESULT)
+
+    def get_decoded_results(self, results):
+        '''
+            Get the decoded results.
+
+            >>> exec = GPGExec('/var/local/projects/goodcrypto/server/data/oce/.gnupg')
+            >>> exec.get_decoded_results(b'test')
+            'test'
+        '''
+
+        def decode_with(results, charset):
+            try:
+                decoded_results = results.decode(encoding=charset)
+            except ValueError as ve:
+                decoded_results = None
+
+            return decoded_results
+
+        decoded_results = decode_with(results, 'utf-8')
+        if decoded_results is None:
+            decoded_results = decode_with(results, 'iso-8859-1')
+        if decoded_results is None:
+            decoded_results = decode_with(results, 'iso-8859-2')
+        if decoded_results is None:
+            decoded_results = decode_with(results, 'iso-8859-15')
+        if decoded_results is None:
+            decoded_results = decode_with(results, 'koi8-r')
+        if decoded_results is None:
+            decoded_results = results
+            self.log_message('unable to decode results "{}" with standard gpg charsets'.format(results))
+
+        return decoded_results
 
     def set_up_conf(self):
         ''' Set up the GPG conf file, if it doesn't exist. '''
@@ -460,7 +483,7 @@ class GPGExec(object):
                     self.log_message('created {}'.format(gpg_conf))
         except Exception:
             record_exception()
-            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            self.log_message('EXCEPTION - see syr.exception.log for details')
 
     def clear_gpg_lock_files(self):
         '''
@@ -485,7 +508,7 @@ class GPGExec(object):
                             self.log_message("deleted lock file " + name)
         except Exception:
             record_exception()
-            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            self.log_message('EXCEPTION - see syr.exception.log for details')
 
     def clear_gpg_tmp_files(self):
         '''
@@ -506,7 +529,7 @@ class GPGExec(object):
                             os.remove(os.path.join(self.gpg_home, name))
         except Exception:
             record_exception()
-            self.log_message('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            self.log_message('EXCEPTION - see syr.exception.log for details')
 
     def log_message(self, message):
         '''

@@ -1,10 +1,9 @@
 '''
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-09-23
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-06-02
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
-
 import os
 from abc import abstractmethod
 
@@ -101,9 +100,30 @@ class AbstractPlugin(AbstractCrypto):
 
         return None
 
+    def get_queue_connection(self):
+        '''
+            Get the connection to the queue if this plugin uses one.
+        '''
+
+        return None
+
     def get_queue(self):
         '''
             Get the queue if this plugin uses one.
+        '''
+
+        return None
+
+    def get_queue_name(self):
+        '''
+            Get the queue's name if this plugin uses one.
+        '''
+
+        return None
+
+    def get_queue_port(self):
+        '''
+            Get the queue's port if this plugin uses one.
         '''
 
         return None

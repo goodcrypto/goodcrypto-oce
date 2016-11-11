@@ -1,25 +1,25 @@
 '''
     Basic utilities for crypto.
-    
-    Copyright 2014-2015 GoodCrypto
-    Last modified: 2015-07-27
+
+    Copyright 2014-2016 GoodCrypto
+    Last modified: 2016-08-03
 
     This file is open source, licensed under GPLv3 <http://www.gnu.org/licenses/>.
 '''
 from datetime import date
 
-from goodcrypto.utils.exception import record_exception
 from goodcrypto.utils.log_file import LogFile
+from syr.exception import record_exception
 
 _log = LogFile()
 
 def format_fingerprint(fingerprint):
-    ''' 
+    '''
         Format a fingerprint so it's more readable.
-        
+
         >>> format_fingerprint(None)
     '''
-    
+
     if fingerprint is None or len(fingerprint.strip()) <= 0:
         formatted_fingerprint = fingerprint
     else:
@@ -41,11 +41,13 @@ def format_fingerprint(fingerprint):
 def strip_fingerprint(fingerprint):
     '''
         Strip the fingerprint of all spaces.
-        
-        >>> strip_fingerprint('D106 3C24 9F55 FFE3 0DC7 80DF D90F 1880 8F6C CF14')
-        'D1063C249F55FFE30DC780DFD90F18808F6CCF14'
-        >>> strip_fingerprint('')
-        ''
+
+        >>> fingerprint = strip_fingerprint('D106 3C24 9F55 FFE3 0DC7 80DF D90F 1880 8F6C CF14')
+        >>> fingerprint == 'D1063C249F55FFE30DC780DFD90F18808F6CCF14'
+        True
+        >>> fingerprint = strip_fingerprint('')
+        >>> fingerprint == ''
+        True
         >>> strip_fingerprint(None)
     '''
 
@@ -78,7 +80,7 @@ def is_expired(this_date):
             expired = expired_date <= date.today()
         except Exception:
             record_exception()
-            _log.write('EXCEPTION - see goodcrypto.utils.exception.log for details')
+            _log.write('EXCEPTION - see syr.exception.log for details')
 
     return expired
 
